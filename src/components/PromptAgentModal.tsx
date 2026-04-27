@@ -295,6 +295,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                             <div className="font-medium text-slate-800 dark:text-slate-100">{chain.title}</div>
                             <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 dark:text-blue-300">{(chain.confidence * 100).toFixed(0)}%</span>
                           </div>
+                          {chain.scenarioLabel && <div className="mt-1 inline-flex rounded-full bg-indigo-500/10 px-2 py-0.5 text-[11px] text-indigo-600 dark:text-indigo-300">场景策略：{chain.scenarioLabel}</div>}
                           <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{chain.reason}</div>
                           <div className="mt-2 grid grid-cols-1 gap-2">
                             {[

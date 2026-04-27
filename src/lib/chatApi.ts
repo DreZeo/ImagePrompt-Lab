@@ -48,6 +48,8 @@ export interface PresetContext {
     id: string
     title: string
     category: string
+    scenario?: string
+    scenarioLabel?: string
     author?: string
     sourceUrl?: string
     lang?: string
@@ -83,8 +85,10 @@ function buildStrategyChains(
     const ruleIds = knowledge.rules.slice(0, 5).map((entry) => entry.item.id)
     const rules = knowledge.rules.slice(0, 4)
     const relatedReferences = references.filter((reference) => reference.category === template.category).slice(0, 3)
+    const scenarioLabel = template.scenarioLabel ?? visualIntent.scenarioLabel
     const structureKeywords = uniqueValues([
       TEMPLATE_CATEGORY_LABELS[template.category],
+      scenarioLabel,
       template.outputHints.aspectRatio,
       visualIntent.platform,
       visualIntent.purpose,
@@ -114,9 +118,11 @@ function buildStrategyChains(
 
     return {
       id: `strategy-${index + 1}`,
-      title: `${TEMPLATE_CATEGORY_LABELS[template.category]}策略链`,
-      intent: uniqueValues([visualIntent.subject, visualIntent.purpose, visualIntent.platform, visualIntent.text.density]).slice(0, 6),
-      structure: uniqueValues([template.name, template.description, ...structureKeywords]).slice(0, 6),
+      title: scenarioLabel ? `${TEMPLATE_CATEGORY_LABELS[template.category]} · ${scenarioLabel}策略链` : `${TEMPLATE_CATEGORY_LABELS[template.category]}策略链`,
+      scenario: template.scenario ?? visualIntent.scenario,
+      scenarioLabel,
+      intent: uniqueValues([visualIntent.subject, visualIntent.purpose, visualIntent.platform, scenarioLabel, visualIntent.text.density]).slice(0, 6),
+      structure: uniqueValues([scenarioLabel, template.name, template.description, ...structureKeywords]).slice(0, 6),
       visualLanguage: visualKeywords.slice(0, 6),
       keywordPack: {
         structure: structureKeywords.slice(0, 8),
@@ -331,6 +337,8 @@ export function buildPresetContext(query: string, presetOnly = false): PresetCon
     id: template.id,
     title: template.name,
     category: TEMPLATE_CATEGORY_LABELS[template.category],
+    scenario: template.scenario,
+    scenarioLabel: template.scenarioLabel,
     prompt: renderRecommendationPrompt({
       template,
       styles: [],
@@ -389,6 +397,7 @@ function buildSystemPrompt(presetContext: PresetContext): string {
       ? presetContext.strategyChains.map((chain) => [
         `- ${chain.id}: ${chain.title} confidence ${chain.confidence.toFixed(2)}`,
         `  Intent: ${chain.intent.join(', ') || 'general'}`,
+        `  Scenario: ${chain.scenarioLabel ?? 'category-level strategy'}`,
         `  Structure strategy: ${chain.structure.join('；')}`,
         `  Visual language: ${chain.visualLanguage.join(', ') || 'none'}`,
         `  Keyword pack: ${JSON.stringify(chain.keywordPack)}`,
@@ -424,6 +433,7 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     presetContext.templates.length
       ? presetContext.templates.map((template) => [
         `- ${template.id}: ${template.title} [${template.category}]${template.source ? ` source:${template.source}` : ''}`,
+        `  Scenario: ${template.scenarioLabel ?? 'category-level'}`,
         `  Governance: ${template.governance ? JSON.stringify(template.governance) : 'none'}`,
         `  Description: ${template.description ?? ''}`,
         `  Tags: ${template.tags?.join(', ') || 'none'}`,

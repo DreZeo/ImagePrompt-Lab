@@ -1,6 +1,18 @@
 ﻿import { STYLE_PRESETS, TEMPLATE_PRESETS, extractSearchKeywords, type StylePreset, type TemplatePreset } from './promptPresets'
 
 export type PromptTemplateCategory = 'poster' | 'portrait' | 'anime' | 'product' | 'ui-screenshot' | 'infographic' | 'scene' | 'other'
+export type PromptTemplateScenario =
+  | 'brand-key-visual'
+  | 'ecommerce-sale-poster'
+  | 'event-release-poster'
+  | 'social-campaign-cover'
+  | 'saas-landing-hero'
+  | 'analytics-dashboard'
+  | 'food-drink-photo'
+  | 'tech-product-render'
+  | 'packaging-display'
+  | 'interior-architecture'
+  | 'workflow-explainer'
 
 export interface PromptTemplateSlot {
   label: string
@@ -39,6 +51,8 @@ export interface VisualIntentTextRequirement {
 export interface VisualIntent {
   subject?: string
   category?: PromptTemplateCategory
+  scenario?: PromptTemplateScenario
+  scenarioLabel?: string
   purpose?: string
   platform?: string
   styleHints: string[]
@@ -58,6 +72,9 @@ export interface StructuredPromptTemplate {
   id: string
   name: string
   category: PromptTemplateCategory
+  scenario?: PromptTemplateScenario
+  scenarioLabel?: string
+  scenarioAliases?: string[]
   description: string
   tags: string[]
   slots: Record<string, PromptTemplateSlot>
@@ -126,6 +143,8 @@ export interface LegacyReferenceInsight {
 export interface PromptStrategyChain {
   id: string
   title: string
+  scenario?: PromptTemplateScenario
+  scenarioLabel?: string
   intent: string[]
   structure: string[]
   visualLanguage: string[]
@@ -183,6 +202,34 @@ export const TEMPLATE_CATEGORY_LABELS: Record<PromptTemplateCategory, string> = 
   infographic: '信息图 / 百科',
   scene: '场景 / 环境',
   other: '其他',
+}
+
+export const TEMPLATE_SCENARIO_LABELS: Record<PromptTemplateScenario, string> = {
+  'brand-key-visual': '品牌主视觉',
+  'ecommerce-sale-poster': '电商促销海报',
+  'event-release-poster': '活动 / 发布海报',
+  'social-campaign-cover': '社媒传播封面',
+  'saas-landing-hero': 'SaaS 落地页首屏',
+  'analytics-dashboard': '数据看板截图',
+  'food-drink-photo': '食品 / 饮品摄影',
+  'tech-product-render': '科技产品渲染',
+  'packaging-display': '包装展示',
+  'interior-architecture': '室内 / 建筑空间',
+  'workflow-explainer': '流程解释图',
+}
+
+const TEMPLATE_SCENARIO_ALIASES: Record<PromptTemplateScenario, string[]> = {
+  'brand-key-visual': ['品牌主视觉', '主视觉', 'KV', 'key visual', '品牌海报', '品牌大片', '品牌形象'],
+  'ecommerce-sale-poster': ['电商', '促销', '大促', '优惠', '618', '双11', '限时', '买赠', 'sale', '商品促销'],
+  'event-release-poster': ['活动', '发布会', '新品发布', '邀请函', '展会', '峰会', '开业', 'release', 'event'],
+  'social-campaign-cover': ['小红书', '封面', '种草', '社媒', '社交媒体', '笔记', '朋友圈', 'campaign'],
+  'saas-landing-hero': ['SaaS', '官网', '落地页', 'landing page', 'hero', '首页首屏', '产品首页'],
+  'analytics-dashboard': ['dashboard', '仪表盘', '数据看板', '后台', '管理台', 'BI', '图表界面', 'analytics'],
+  'food-drink-photo': ['美食', '食物', '饮品', '咖啡', '甜品', '餐饮', '奶茶', 'food', 'drink'],
+  'tech-product-render': ['科技产品', '硬件', '耳机', '手机', '机器人', '设备', '3C', 'render', '渲染'],
+  'packaging-display': ['包装', '盒子', '瓶身', '标签', '礼盒', '包装设计', '包装展示'],
+  'interior-architecture': ['室内', '建筑', '空间', '家居', '展厅', '办公室', '民宿', 'interior', 'architecture'],
+  'workflow-explainer': ['流程图', '工作流', '步骤', '解释图', '教程', '方法论', '对比图', 'process', 'workflow'],
 }
 
 const USER_TEMPLATE_STORAGE_KEY = 'gpt-image-user-structured-templates'
@@ -1218,6 +1265,122 @@ export const OFFICIAL_PROMPT_TEMPLATES: StructuredPromptTemplate[] = [
   },
 ]
 
+function createScenarioTemplate(template: Omit<StructuredPromptTemplate, 'scenarioLabel' | 'scenarioAliases' | 'source' | 'governance'> & {
+  scenario: PromptTemplateScenario
+  governance: TemplateGovernance
+}): StructuredPromptTemplate {
+  return {
+    ...template,
+    scenarioLabel: TEMPLATE_SCENARIO_LABELS[template.scenario],
+    scenarioAliases: TEMPLATE_SCENARIO_ALIASES[template.scenario],
+    source: 'official',
+    governance: template.governance,
+  }
+}
+
+export const SCENARIO_PROMPT_TEMPLATES: StructuredPromptTemplate[] = [
+  createScenarioTemplate({
+    id: 'scenario-poster-brand-key-visual', name: '品牌主视觉 KV', category: 'poster', scenario: 'brand-key-visual',
+    description: '适合品牌形象升级、年度主题、品牌大片和高端 Campaign 的主视觉策略。',
+    tags: ['品牌', '主视觉', 'KV', '品牌海报', '高级', 'Campaign'],
+    slots: { subject: { label: '品牌/主题', required: true, examples: ['高端咖啡品牌', 'AI 创作工具'] }, coreMessage: { label: '核心信息', default: '一句清晰的品牌主张' }, symbol: { label: '品牌符号', default: '产品轮廓、Logo 图形或代表性材质' }, composition: { label: '视觉结构', default: '强中心主视觉、留白、标题区和品牌落款' } },
+    promptPattern: '生成一张品牌主视觉 KV 海报，品牌/主题是{{subject}}。核心信息为{{coreMessage}}，融入{{symbol}}，视觉结构采用{{composition}}。要求商业广告级完成度、品牌资产清晰、可延展到多渠道 Campaign。',
+    negativePrompt: '避免普通促销感、Logo 过大、文字堆满、品牌符号不清、廉价素材拼贴。',
+    outputHints: { aspectRatio: '4:5', language: 'zh-CN', textDensity: 'low', realism: 'high' }, examples: ['咖啡品牌年度主视觉', 'AI 工具品牌发布 KV'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['brand-system', 'brand-promotion'], platforms: ['campaign'], subjectTypes: ['brand', 'product'], textDensity: ['low'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-poster-ecommerce-sale', name: '电商促销海报', category: 'poster', scenario: 'ecommerce-sale-poster',
+    description: '适合大促、限时优惠、买赠活动和商品利益点明确的商业促销画面。', tags: ['电商', '促销', '大促', '商品', '优惠', '转化'],
+    slots: { subject: { label: '商品', required: true, examples: ['咖啡豆礼盒', '降噪耳机'] }, offer: { label: '促销信息', default: '限时优惠、买赠或新品首发权益' }, hierarchy: { label: '信息层级', default: '商品主视觉最大，价格/权益第二，辅助卖点第三' }, background: { label: '背景氛围', default: '干净商业背景，少量促销符号和品牌色块' } },
+    promptPattern: '生成一张电商促销海报，商品是{{subject}}，促销信息是{{offer}}。信息层级采用{{hierarchy}}，背景氛围为{{background}}。要求商品清晰、利益点醒目、转化导向强，同时保持精致商业质感。',
+    negativePrompt: '避免低端叫卖感、红包元素堆砌、价格文字乱码、商品变形、信息层级混乱。',
+    outputHints: { aspectRatio: '4:5', language: 'zh-CN', textDensity: 'medium', realism: 'high' }, examples: ['618 咖啡礼盒促销海报', '耳机新品限时优惠图'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['commercial-product', 'brand-promotion'], platforms: ['ecommerce', 'social'], subjectTypes: ['product'], textDensity: ['medium'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-poster-event-release', name: '活动发布海报', category: 'poster', scenario: 'event-release-poster',
+    description: '适合发布会、峰会、展览、课程、开业和线下活动的正式传播海报。', tags: ['活动', '发布会', '展会', '峰会', '邀请函', '时间地点'],
+    slots: { subject: { label: '活动主题', required: true, examples: ['AI 产品发布会', '咖啡节'] }, venue: { label: '时间地点', default: '清晰但不喧宾夺主的时间地点信息区' }, atmosphere: { label: '活动氛围', default: '正式、期待感、秩序感、轻仪式感' }, visualHook: { label: '视觉钩子', default: '舞台光、产品轮廓或抽象主题符号' } },
+    promptPattern: '生成一张活动发布海报，活动主题是{{subject}}。画面包含{{venue}}，整体氛围{{atmosphere}}，核心视觉钩子为{{visualHook}}。要求信息层级清晰、具有发布感和传播感。',
+    negativePrompt: '避免像普通通知单、文字密度失控、时间地点难读、舞台杂乱、廉价渐变。',
+    outputHints: { aspectRatio: '9:16', language: 'zh-CN', textDensity: 'medium', realism: 'medium' }, examples: ['AI 新品发布会海报', '咖啡节活动海报'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['event-promotion', 'brand-promotion'], platforms: ['social', 'offline'], subjectTypes: ['event'], textDensity: ['medium'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-poster-social-campaign-cover', name: '社媒传播封面', category: 'poster', scenario: 'social-campaign-cover',
+    description: '适合小红书、朋友圈、短内容封面和轻 Campaign 的高点击率封面。', tags: ['社媒', '小红书', '封面', '种草', '点击率', '标题'],
+    slots: { subject: { label: '封面主题', required: true, examples: ['咖啡新品测评', 'AI 工作流教程'] }, hook: { label: '点击钩子', default: '一个短而明确的利益点标题' }, layout: { label: '移动端版式', default: '主体大、标题短、标签少、上屏 1 秒可读' }, tone: { label: '传播语气', default: '真实、有用、清爽、有生活方式感' } },
+    promptPattern: '生成一张社媒传播封面，主题是{{subject}}。点击钩子为{{hook}}，移动端版式采用{{layout}}，传播语气{{tone}}。要求手机端缩略图也清楚、有记忆点，文字少但吸引点击。',
+    negativePrompt: '避免标题太长、封面过满、营销味过重、贴纸过多、主体不清。',
+    outputHints: { aspectRatio: '3:4', language: 'zh-CN', textDensity: 'low', realism: 'medium' }, examples: ['小红书咖啡种草封面', 'AI 工作流教程封面'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['social-seeding', 'brand-promotion'], platforms: ['xiaohongshu', 'social'], subjectTypes: ['lifestyle'], textDensity: ['low'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-ui-saas-landing-hero', name: 'SaaS 落地页首屏', category: 'ui-screenshot', scenario: 'saas-landing-hero',
+    description: '适合 B 端产品官网、AI 工具首页和 SaaS 落地页 Hero 区截图。', tags: ['SaaS', '落地页', '官网', 'Hero', 'B端', 'CTA'],
+    slots: { subject: { label: '产品', required: true, examples: ['AI 提示词工作台', '数据分析平台'] }, valueProp: { label: '价值主张', default: '一句清晰的产品价值主张' }, uiBlocks: { label: '界面模块', default: '导航栏、Hero 标题、CTA、产品截图卡片、客户信任标识' }, style: { label: '视觉风格', default: '现代、留白充足、渐变柔和、玻璃卡片、可信赖' } },
+    promptPattern: '生成一张 SaaS 产品落地页首屏截图，产品是{{subject}}，价值主张为{{valueProp}}。页面包含{{uiBlocks}}，视觉风格{{style}}。要求像真实可上线官网截图，组件对齐精确，层级清楚。',
+    negativePrompt: '避免低保真线框图、按钮错位、文本乱码密集、组件无对齐、过度装饰。',
+    outputHints: { aspectRatio: '16:9', language: 'zh-CN', textDensity: 'medium', realism: 'medium' }, examples: ['AI 工具官网首屏', '数据平台 SaaS Landing Page'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['ui-product', 'brand-promotion'], platforms: ['web'], subjectTypes: ['software'], textDensity: ['medium'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-ui-analytics-dashboard', name: '数据看板截图', category: 'ui-screenshot', scenario: 'analytics-dashboard',
+    description: '适合后台管理台、数据分析、BI 看板和运营监控类界面截图。', tags: ['Dashboard', '数据看板', '图表', '后台', '管理台', 'BI'],
+    slots: { subject: { label: '业务主题', required: true, examples: ['咖啡店销售数据', 'AI 模型监控'] }, metrics: { label: '核心指标', default: '收入、增长率、转化率、趋势图和分布图' }, layout: { label: '布局', default: '左侧导航、顶部筛选、KPI 卡片、折线图、柱状图、明细表' }, theme: { label: '界面主题', default: '深色科技感或浅色专业 B 端风格' } },
+    promptPattern: '生成一张专业数据看板 UI 截图，业务主题是{{subject}}。核心指标包括{{metrics}}，布局为{{layout}}，界面主题{{theme}}。要求图表真实、组件整齐、信息密度高但可读。',
+    negativePrompt: '避免图表随机、数字乱码过多、组件拥挤、卡片不对齐、像概念海报而非真实界面。',
+    outputHints: { aspectRatio: '16:9', language: 'zh-CN', textDensity: 'high', realism: 'medium' }, examples: ['咖啡店销售看板', 'AI 模型监控后台'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['ui-product', 'data-visualization'], platforms: ['web'], subjectTypes: ['software'], textDensity: ['high'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-product-food-drink-photo', name: '食品饮品摄影', category: 'product', scenario: 'food-drink-photo',
+    description: '适合咖啡、饮品、甜品、餐饮新品和生活方式食品广告摄影。', tags: ['美食', '饮品', '咖啡', '餐饮', '食品摄影', '自然光'],
+    slots: { subject: { label: '食品/饮品', required: true, examples: ['冰拿铁', '草莓蛋糕'] }, setting: { label: '场景', default: '干净桌面、自然窗光、少量原料和器皿陪衬' }, appetite: { label: '食欲点', default: '新鲜、温度感、质地细节和可口光泽' }, camera: { label: '镜头', default: '商业摄影浅景深，主体锐利，背景柔和' } },
+    promptPattern: '生成一张食品/饮品商业摄影图，主体是{{subject}}。场景为{{setting}}，突出{{appetite}}，镜头语言为{{camera}}。要求真实可口、材质细节丰富、适合品牌宣传或社媒种草。',
+    negativePrompt: '避免食物不新鲜、颜色发灰、摆盘脏乱、液体质感错误、过度塑料感。',
+    outputHints: { aspectRatio: '4:5', language: 'zh-CN', textDensity: 'none', realism: 'high' }, examples: ['冰拿铁自然光摄影', '草莓蛋糕新品图'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['commercial-product', 'social-seeding'], platforms: ['social', 'ecommerce'], subjectTypes: ['food', 'product'], textDensity: ['none', 'low'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-product-tech-render', name: '科技产品渲染', category: 'product', scenario: 'tech-product-render',
+    description: '适合 3C、硬件、机器人、设备和未来科技产品的高端渲染图。', tags: ['科技产品', '3C', '硬件', '产品渲染', '工业设计'],
+    slots: { subject: { label: '科技产品', required: true, examples: ['降噪耳机', '桌面机器人'] }, material: { label: '材质', default: '金属、磨砂玻璃、精密塑料和微细工艺纹理' }, angle: { label: '展示角度', default: '三分之四角度英雄视图，局部细节悬浮分解' }, lighting: { label: '灯光', default: '棚拍轮廓光、冷暖渐变反射、干净暗背景' } },
+    promptPattern: '生成一张高端科技产品渲染图，产品是{{subject}}。材质表现为{{material}}，展示角度为{{angle}}，灯光为{{lighting}}。要求工业设计感、精密细节、商业级 3D render 质感。',
+    negativePrompt: '避免廉价塑料感、比例错误、接口混乱、反射脏、背景杂乱、像玩具。',
+    outputHints: { aspectRatio: '1:1', language: 'zh-CN', textDensity: 'none', realism: 'high' }, examples: ['降噪耳机高端渲染', '桌面机器人宣传图'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['commercial-product', 'tech-product'], platforms: ['ecommerce', 'web'], subjectTypes: ['product', 'technology'], textDensity: ['none', 'low'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-product-packaging-display', name: '包装展示图', category: 'product', scenario: 'packaging-display',
+    description: '适合瓶身、礼盒、标签、包装系列和品牌包装系统展示。', tags: ['包装', '礼盒', '瓶身', '标签', '包装设计'],
+    slots: { subject: { label: '包装对象', required: true, examples: ['咖啡豆包装', '护肤品瓶身'] }, lineup: { label: '展示方式', default: '正面主包装、侧面辅助包装、局部标签细节' }, surface: { label: '材质表面', default: '纸张肌理、烫金、磨砂标签或透明瓶身质感' }, scene: { label: '陈列场景', default: '干净棚拍台面或品牌色背景' } },
+    promptPattern: '生成一张包装展示图，包装对象是{{subject}}。展示方式为{{lineup}}，材质表面突出{{surface}}，陈列场景为{{scene}}。要求品牌系统统一、包装信息层级清楚、商业摄影质感。',
+    negativePrompt: '避免标签乱码、包装透视错误、材质廉价、信息过密、品牌风格不统一。',
+    outputHints: { aspectRatio: '4:5', language: 'zh-CN', textDensity: 'low', realism: 'high' }, examples: ['咖啡豆包装系列展示', '护肤品瓶身棚拍'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['brand-system', 'commercial-product'], platforms: ['ecommerce', 'web'], subjectTypes: ['product', 'packaging'], textDensity: ['low'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-scene-interior-architecture', name: '室内建筑空间', category: 'scene', scenario: 'interior-architecture',
+    description: '适合室内设计、建筑空间、展厅、办公室、咖啡店和家居效果图。', tags: ['室内', '建筑', '空间', '家居', '展厅', '办公室'],
+    slots: { subject: { label: '空间类型', required: true, examples: ['精品咖啡店', 'AI 公司办公室'] }, layout: { label: '空间布局', default: '清晰动线、前中后景层次、功能区明确' }, material: { label: '材质', default: '木、石材、金属、织物与自然光形成高级质感' }, camera: { label: '镜头', default: '广角但不畸变，建筑摄影水平垂直线准确' } },
+    promptPattern: '生成一张室内/建筑空间效果图，空间类型是{{subject}}。空间布局为{{layout}}，材质为{{material}}，镜头语言{{camera}}。要求真实建筑摄影质感、光线自然、尺度合理、细节高级。',
+    negativePrompt: '避免空间尺度错误、透视畸变、家具漂浮、材质脏乱、过度 HDR、灯光不真实。',
+    outputHints: { aspectRatio: '16:9', language: 'zh-CN', textDensity: 'none', realism: 'high' }, examples: ['精品咖啡店室内效果图', 'AI 公司办公室空间'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['scene-design', 'architecture-interior'], platforms: ['web', 'presentation'], subjectTypes: ['space', 'architecture'], textDensity: ['none'] },
+  }),
+  createScenarioTemplate({
+    id: 'scenario-infographic-workflow-explainer', name: '流程解释图', category: 'infographic', scenario: 'workflow-explainer',
+    description: '适合 AI 工作流、教程步骤、方法论、产品流程和复杂概念解释。', tags: ['流程图', '工作流', '教程', '步骤', '解释图', '方法论'],
+    slots: { subject: { label: '流程主题', required: true, examples: ['AI 图片生成工作流', '咖啡冲煮步骤'] }, steps: { label: '步骤结构', default: '3-6 个主要步骤，每步有短标题和一句说明' }, visualSystem: { label: '视觉系统', default: '统一图标、箭头、编号、分区卡片和清晰阅读路径' }, emphasis: { label: '重点', default: '突出关键决策点、输入输出和结果收益' } },
+    promptPattern: '生成一张流程解释信息图，主题是{{subject}}。步骤结构为{{steps}}，视觉系统采用{{visualSystem}}，重点突出{{emphasis}}。要求阅读路径清晰、图标统一、信息层级明确，适合教程或产品说明。',
+    negativePrompt: '避免箭头混乱、步骤过多、文字不可读、图标风格不一致、信息无层级。',
+    outputHints: { aspectRatio: '4:5', language: 'zh-CN', textDensity: 'high', realism: 'low' }, examples: ['AI 图片生成工作流图', '咖啡冲煮步骤图'],
+    governance: { sourceRole: 'primary', status: 'active', qualityTier: 'high', intents: ['infographic', 'education'], platforms: ['social', 'presentation'], subjectTypes: ['process'], textDensity: ['high'] },
+  }),
+]
+
 const STYLE_CATEGORY_BY_ID: Record<string, StructuredStylePreset['category']> = {
   'style-10': 'photographic', 'style-11': 'photographic', 'style-47': 'photographic', 'style-48': 'photographic', 'style-34': 'photographic',
   'style-04': 'traditional-art', 'style-05': 'traditional-art', 'style-13': 'traditional-art', 'style-14': 'traditional-art', 'style-15': 'traditional-art', 'style-16': 'traditional-art', 'style-20': 'traditional-art', 'style-27': 'traditional-art', 'style-38': 'traditional-art', 'style-42': 'traditional-art', 'style-44': 'traditional-art', 'style-46': 'traditional-art',
@@ -1317,11 +1480,11 @@ export function deleteUserTemplate(templateId: string): TemplateDraft[] {
 
 export function getAllStructuredTemplates(): StructuredPromptTemplate[] {
   const legacyTemplates = TEMPLATE_PRESETS.map(toLegacyStructuredTemplate)
-  return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES, ...legacyTemplates]
+  return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES, ...SCENARIO_PROMPT_TEMPLATES, ...legacyTemplates]
 }
 
 export function getMainTrackTemplates(): StructuredPromptTemplate[] {
-  return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES]
+  return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES, ...SCENARIO_PROMPT_TEMPLATES]
 }
 
 export function getLegacyReferenceTemplates(): StructuredPromptTemplate[] {
@@ -1501,15 +1664,23 @@ function inferRealism(text: string): VisualIntent['realism'] | undefined {
   if (textHasAny(text, ['flat', 'illustration', 'anime', 'cartoon'])) return 'low'
   return undefined
 }
+
+function inferScenarioFromText(text: string): PromptTemplateScenario | undefined {
+  return (Object.entries(TEMPLATE_SCENARIO_ALIASES) as Array<[PromptTemplateScenario, string[]]>).find(([, aliases]) => textHasAny(text, aliases))?.[0]
+}
+
 export function extractVisualIntent(query: string): VisualIntent {
   const text = query.trim()
   const category = inferCategoryFromText(text)
+  const scenario = inferScenarioFromText(text)
   const textDensity = inferTextDensity(text)
   const subject = inferSubject(text)
-  const confidenceSignals = [subject, category, inferPurpose(text), inferPlatform(text), textDensity, inferPalette(text), inferMood(text), inferAspectRatio(text)].filter(Boolean).length
+  const confidenceSignals = [subject, category, scenario, inferPurpose(text), inferPlatform(text), textDensity, inferPalette(text), inferMood(text), inferAspectRatio(text)].filter(Boolean).length
   return {
     subject,
     category,
+    scenario,
+    scenarioLabel: scenario ? TEMPLATE_SCENARIO_LABELS[scenario] : undefined,
     purpose: inferPurpose(text),
     platform: inferPlatform(text),
     styleHints: inferStyleHints(text),
@@ -1524,7 +1695,7 @@ export function extractVisualIntent(query: string): VisualIntent {
     constraints: textHasAny(text, ['避免', '不要', '禁止']) ? [text] : [],
     negativeHints: textHasAny(text, ['避免', '不要', '禁止']) ? extractSearchKeywords(text).slice(0, 8) : [],
     missingFields: uniqueStrings([subject ? undefined : 'subject', category ? undefined : 'category']),
-    confidence: Math.min(0.95, Math.max(0.25, confidenceSignals / 8)),
+    confidence: Math.min(0.95, Math.max(0.25, confidenceSignals / 9)),
   }
 }
 
@@ -1554,7 +1725,9 @@ function governanceScore(template: StructuredPromptTemplate, intent: VisualInten
   const subjectType = inferSubjectType(intent.subject ?? '', intent.category)
   const subjectScore = subjectType && governance.subjectTypes.includes(subjectType) ? 8 : 0
   const textScore = intent.text.density && governance.textDensity.includes(intent.text.density) ? 6 : 0
-  return sourceScore + qualityScore + categoryScore + purposeScore + platformScore + subjectScore + textScore - statusPenalty
+  const scenarioScore = intent.scenario && template.scenario === intent.scenario ? 36 : 0
+  const scenarioAliasScore = intent.scenario && template.scenarioAliases?.some((alias) => textHasAny(alias, TEMPLATE_SCENARIO_ALIASES[intent.scenario!])) ? 4 : 0
+  return sourceScore + qualityScore + categoryScore + scenarioScore + scenarioAliasScore + purposeScore + platformScore + subjectScore + textScore - statusPenalty
 }
 
 export function searchStructuredTemplates(query: string, category: PromptTemplateCategory | 'all' = 'all', visualIntent?: VisualIntent): RankedResult<StructuredPromptTemplate>[] {
@@ -1629,6 +1802,9 @@ export function searchLegacyReferenceInsights(query: string, category: PromptTem
       const fields = [
         template.name,
         template.description,
+        template.scenario ?? '',
+        template.scenarioLabel ?? '',
+        ...(template.scenarioAliases ?? []),
         template.sourceTitle ?? '',
         ...template.tags,
         ...template.examples,
