@@ -7,11 +7,14 @@ import {
   extractVisualIntent,
   getPromptRecommendations,
   parseAssistantComposition,
+  searchLegacyReferenceInsights,
   renderRecommendationPrompt,
   searchStructuredStyles,
   searchStructuredTemplates,
   validateAssistantComposition,
+  type LegacyReferenceInsight,
   type PromptRecommendation,
+  type PromptStrategyChain,
   type VisualIntent,
 } from '../data/structuredPrompts'
 import { searchPromptKnowledge, type PromptKnowledgeContext } from '../data/promptKnowledge'
@@ -58,7 +61,78 @@ export interface PresetContext {
     score: number
     matchedKeywords: string[]
   }>
+  references: LegacyReferenceInsight[]
+  strategyChains: PromptStrategyChain[]
   knowledge: PromptKnowledgeContext
+}
+
+function uniqueValues(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]))
+}
+
+function buildStrategyChains(
+  visualIntent: VisualIntent,
+  recommendations: PromptRecommendation[],
+  knowledge: PromptKnowledgeContext,
+  references: LegacyReferenceInsight[],
+): PromptStrategyChain[] {
+  return recommendations.map((recommendation, index) => {
+    const template = recommendation.template
+    const styleNames = recommendation.styles.map((style) => style.name)
+    const styleKeywords = recommendation.styles.map((style) => style.englishKeyword)
+    const ruleIds = knowledge.rules.slice(0, 5).map((entry) => entry.item.id)
+    const rules = knowledge.rules.slice(0, 4)
+    const relatedReferences = references.filter((reference) => reference.category === template.category).slice(0, 3)
+    const structureKeywords = uniqueValues([
+      TEMPLATE_CATEGORY_LABELS[template.category],
+      template.outputHints.aspectRatio,
+      visualIntent.platform,
+      visualIntent.purpose,
+      ...template.tags.slice(0, 4),
+    ])
+    const compositionKeywords = uniqueValues([
+      visualIntent.composition,
+      ...Object.values(template.slots).map((slot) => slot.label),
+      ...relatedReferences.flatMap((reference) => reference.traits).slice(0, 4),
+    ])
+    const visualKeywords = uniqueValues([
+      ...styleNames,
+      ...styleKeywords,
+      ...visualIntent.styleHints,
+      visualIntent.mood,
+      visualIntent.palette,
+    ])
+    const qualityKeywords = uniqueValues([
+      ...rules.flatMap((entry) => entry.item.positiveFragments.slice(0, 2)),
+      knowledge.outputProfile.name,
+    ]).slice(0, 8)
+    const negativeKeywords = uniqueValues([
+      template.negativePrompt,
+      ...rules.flatMap((entry) => entry.item.negativeFragments.slice(0, 2)),
+      ...knowledge.outputProfile.avoid.slice(0, 3),
+    ]).slice(0, 8)
+
+    return {
+      id: `strategy-${index + 1}`,
+      title: `${TEMPLATE_CATEGORY_LABELS[template.category]}策略链`,
+      intent: uniqueValues([visualIntent.subject, visualIntent.purpose, visualIntent.platform, visualIntent.text.density]).slice(0, 6),
+      structure: uniqueValues([template.name, template.description, ...structureKeywords]).slice(0, 6),
+      visualLanguage: visualKeywords.slice(0, 6),
+      keywordPack: {
+        structure: structureKeywords.slice(0, 8),
+        composition: compositionKeywords.slice(0, 8),
+        visual: visualKeywords.slice(0, 8),
+        quality: qualityKeywords,
+        negative: negativeKeywords,
+      },
+      ruleIds,
+      templateIds: [template.id],
+      styleIds: recommendation.styles.map((style) => style.id),
+      referenceIds: relatedReferences.map((reference) => reference.id),
+      confidence: recommendation.confidence,
+      reason: recommendation.reason,
+    }
+  })
 }
 
 export function withDefaultChatSettings(settings: AppSettings): AppSettings {
@@ -239,6 +313,7 @@ export function buildPresetContext(query: string, presetOnly = false): PresetCon
   const preferredCategory = recommendations[0]?.template.category
   const styleResults = searchStructuredStyles(query, preferredCategory, visualIntent).slice(0, 8)
   const templateResults = searchStructuredTemplates(query, visualIntent.category ?? 'all', visualIntent).slice(0, 8)
+  const references = searchLegacyReferenceInsights(query, visualIntent.category ?? 'all', visualIntent, 5)
   const styles = styleResults.map(({ item: style, score, matchedKeywords }) => ({
     id: style.id,
     name: style.name,
@@ -279,27 +354,29 @@ export function buildPresetContext(query: string, presetOnly = false): PresetCon
     styles: styleResults.map((entry) => entry.item),
     limit: 5,
   })
+  const strategyChains = buildStrategyChains(visualIntent, recommendations, knowledge, references)
 
-  return { query, presetOnly, visualIntent, recommendations, styles, templates, knowledge }
+  return { query, presetOnly, visualIntent, recommendations, styles, templates, references, strategyChains, knowledge }
 }
 
 function buildSystemPrompt(presetContext: PresetContext): string {
   const hasCandidates = presetContext.styles.length > 0 || presetContext.templates.length > 0
   return [
     'You are a senior visual prompt director inside ImagePrompt Lab.',
-    'Your job is not only to write prompts. Your job is to understand the visual intent, choose suitable reusable prompt templates, choose compatible visual styles, fill template slots, compose high-quality image prompts, and help users build a reusable preset library.',
+    'Your job is not only to write prompts. Your job is to understand the visual intent, build a local knowledge chain, choose compatible visual styles, fill generic structure slots, compose high-quality image prompts, and help users build reusable prompt assets.',
     'Think like an art director, commercial designer, photographer, poster layout designer, anime character designer, and prompt engineer.',
     'First classify the visual task: poster/advertisement, portrait/photography, anime/character design, product/object, UI screenshot/social media, infographic/encyclopedia, scene/environment, or other.',
     'Infer subject, purpose, platform, aspect ratio, style, mood, composition, lighting, palette, text density, realism level, constraints, and missing information.',
     'If the request is vague, ask 1-3 concise clarification questions or fill safe defaults while clearly naming assumptions. If it is clear enough, produce a final prompt.',
     'Do not claim to generate images. Do not trigger image generation. The user will decide whether to apply the prompt.',
-    'Treat local templates and styles as reusable design patterns, not plain text. Recommend them when they fit, explain why they fit, fill slots, and combine styles only when visually compatible.',
+    'Treat main-track structured templates and styles as reusable design patterns, not plain text. Use them to build a strategy chain, explain why they fit, fill slots, and combine styles only when visually compatible.',
     'Treat prompt knowledge entries as professional guidance for composition, quality, text control, negative constraints, intent mapping, and output formatting. They are not templates or styles, and their IDs must not be listed as preset IDs.',
-    'Use templates as the scenario skeleton, styles as visual language, and prompt knowledge as the standardization layer. Adapt rules to the user request instead of pasting rule text mechanically.',
+    'Use structure strategies as the scenario skeleton, styles as visual language, and prompt knowledge as the standardization layer. Adapt rules to the user request instead of pasting rule text mechanically.',
+    'Legacy collected examples are reference-only. They may inspire keywords, traits, strengths, or risks, but you must not copy them, expose them as selectable templates, or treat them as the primary structure.',
     'Select at most one primary style and up to two secondary styles. Do not invent template IDs or style IDs that are not listed here.',
     presetContext.presetOnly
-      ? 'Preset-only mode is ON: recommend or use only listed local presets/templates. If none fit, ask the user to broaden keywords or turn preset-only mode off.'
-      : 'Preset-only mode is OFF: you may write a custom prompt, but if you use local presets you must identify their IDs.',
+      ? 'Local knowledge only mode is ON: recommend or use only listed local knowledge sources. If none fit, ask the user to broaden keywords or turn local knowledge only off.'
+      : 'Local knowledge only mode is OFF: you may write a custom prompt, but if you use local sources you must identify their internal IDs in the required evidence fields.',
     !hasCandidates && presetContext.presetOnly
       ? 'No local preset candidates were retrieved. Do not invent preset IDs.'
       : '',
@@ -307,7 +384,21 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     'Structured visual intent extracted locally:',
     JSON.stringify(presetContext.visualIntent, null, 2),
     '',
-    'Local structured recommendations:',
+    'Local strategy chains:',
+    presetContext.strategyChains.length
+      ? presetContext.strategyChains.map((chain) => [
+        `- ${chain.id}: ${chain.title} confidence ${chain.confidence.toFixed(2)}`,
+        `  Intent: ${chain.intent.join(', ') || 'general'}`,
+        `  Structure strategy: ${chain.structure.join('；')}`,
+        `  Visual language: ${chain.visualLanguage.join(', ') || 'none'}`,
+        `  Keyword pack: ${JSON.stringify(chain.keywordPack)}`,
+        `  Professional rule IDs: ${chain.ruleIds.join(', ') || 'none'}`,
+        `  Internal template/style/reference IDs: templates=${chain.templateIds.join(', ') || 'none'}; styles=${chain.styleIds.join(', ') || 'none'}; references=${chain.referenceIds.join(', ') || 'none'}`,
+        `  Reason: ${chain.reason}`,
+      ].join('\n')).join('\n')
+      : '- none',
+    '',
+    'Internal structured recommendations for validation:',
     presetContext.recommendations.length
       ? presetContext.recommendations.map((item) => [
         `- Template ${item.template.id}: ${item.template.name} (${TEMPLATE_CATEGORY_LABELS[item.template.category]}) confidence ${item.confidence.toFixed(2)}`,
@@ -343,6 +434,18 @@ function buildSystemPrompt(presetContext: PresetContext): string {
       ].join('\n')).join('\n')
       : '- none matched',
     '',
+    'Reference-only legacy example insights:',
+    presetContext.references.length
+      ? presetContext.references.map((reference) => [
+        `- ${reference.id}: ${reference.title} [${TEMPLATE_CATEGORY_LABELS[reference.category]}] quality:${reference.qualityTier} score ${reference.score.toFixed(1)}`,
+        `  Traits: ${reference.traits.join('；') || 'none'}`,
+        `  Keywords: ${reference.keywords.join(', ') || 'none'}`,
+        `  Strengths: ${reference.strengths.join('；') || 'none'}`,
+        `  Risks to avoid: ${reference.risks.join('；') || 'none'}`,
+        '  Use as inspiration only; do not copy prompt text or expose as a template choice.',
+      ].join('\n')).join('\n')
+      : '- none matched',
+    '',
     'Relevant prompt knowledge rules:',
     presetContext.knowledge.rules.length
       ? presetContext.knowledge.rules.map((entry) => [
@@ -370,12 +473,12 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     '',
     'Response format requirements:',
     '- Start with a short human-readable recommendation summary in Chinese.',
-    '- Include a fenced ```json block with keys: intent, recommendations, finalPrompt, negativePrompt, actions. Use templateId/styleIds only from the listed candidates.',
+    '- Include a fenced ```json block with keys: intent, recommendations, finalPrompt, negativePrompt, actions. Use templateId/styleIds only from the listed internal candidates.',
     '- In the JSON intent field, preserve or refine the structured visual intent instead of replacing it with unrelated free-form text.',
     '- If required slots are missing, either ask concise questions or state the safe assumptions used to fill them.',
     '- If the user asks to create/save a template, include templateDraft in the JSON. Do not save raw prompts directly; abstract category, tags, slots, promptPattern, negativePrompt, outputHints, and examples.',
-    '- Include a visible line or section named exactly "Used preset IDs:".',
-    '- If no local presets are used, write "Used preset IDs: none".',
+    '- Include a visible line or section named exactly "Used local knowledge IDs:".',
+    '- For compatibility, also include a visible line or section named exactly "Used preset IDs:" and keep it to actual template/style IDs only, or "Used preset IDs: none".',
     '- If prompt knowledge rules influence the answer, mention them separately as "Used knowledge IDs:". Do not mix knowledge IDs into "Used preset IDs:".',
     '- When you produce a ready-to-use prompt, label it exactly as "Final prompt:" followed by the prompt text.',
     '- Final prompts should include subject, scene/background, composition/layout, camera or viewing angle, lighting, color palette, material/texture, style guidance, text requirements, quality constraints, and negative constraints when applicable.',

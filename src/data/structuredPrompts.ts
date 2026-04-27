@@ -109,6 +109,41 @@ export interface PromptRecommendation {
   missingSlots?: string[]
 }
 
+export interface LegacyReferenceInsight {
+  id: string
+  title: string
+  category: PromptTemplateCategory
+  sourceRole: 'reference'
+  qualityTier: TemplateQualityTier
+  traits: string[]
+  keywords: string[]
+  strengths: string[]
+  risks: string[]
+  score: number
+  matchedKeywords: string[]
+}
+
+export interface PromptStrategyChain {
+  id: string
+  title: string
+  intent: string[]
+  structure: string[]
+  visualLanguage: string[]
+  keywordPack: {
+    structure: string[]
+    composition: string[]
+    visual: string[]
+    quality: string[]
+    negative: string[]
+  }
+  ruleIds: string[]
+  templateIds: string[]
+  styleIds: string[]
+  referenceIds: string[]
+  confidence: number
+  reason: string
+}
+
 export interface TemplateDraft extends StructuredPromptTemplate {
   source: 'user'
   createdAt: number
@@ -1285,6 +1320,23 @@ export function getAllStructuredTemplates(): StructuredPromptTemplate[] {
   return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES, ...legacyTemplates]
 }
 
+export function getMainTrackTemplates(): StructuredPromptTemplate[] {
+  return [...getUserTemplates(), ...OFFICIAL_PROMPT_TEMPLATES]
+}
+
+export function getLegacyReferenceTemplates(): StructuredPromptTemplate[] {
+  return TEMPLATE_PRESETS.map(toLegacyStructuredTemplate)
+}
+
+export function isReferenceOnlyTemplate(template: StructuredPromptTemplate): boolean {
+  return deriveTemplateGovernance(template).sourceRole === 'reference'
+}
+
+export function isUsableReferenceTemplate(template: StructuredPromptTemplate): boolean {
+  const governance = deriveTemplateGovernance(template)
+  return governance.sourceRole === 'reference' && governance.status === 'active' && governance.qualityTier !== 'low' && !template.isPlaceholderOnly
+}
+
 function toLegacyStructuredTemplate(template: TemplatePreset): StructuredPromptTemplate {
   const category = mapLegacyCategory(template.category)
   const name = template.localizedTitle || template.title
@@ -1508,7 +1560,7 @@ function governanceScore(template: StructuredPromptTemplate, intent: VisualInten
 export function searchStructuredTemplates(query: string, category: PromptTemplateCategory | 'all' = 'all', visualIntent?: VisualIntent): RankedResult<StructuredPromptTemplate>[] {
   const keywords = extractSearchKeywords(query)
   const intent = visualIntent ?? extractVisualIntent(query)
-  return getAllStructuredTemplates()
+  return getMainTrackTemplates()
     .filter((template) => category === 'all' || template.category === category)
     .map((template, index) => {
       const governance = deriveTemplateGovernance(template)
@@ -1534,6 +1586,77 @@ export function searchStructuredTemplates(query: string, category: PromptTemplat
     })
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score)
+}
+
+function referenceTraits(template: StructuredPromptTemplate, governance: TemplateGovernance): string[] {
+  return uniqueStrings([
+    TEMPLATE_CATEGORY_LABELS[template.category],
+    ...governance.intents,
+    ...governance.platforms,
+    ...governance.subjectTypes,
+    ...governance.textDensity.map((density) => `${density} text`),
+    ...template.tags.slice(0, 4),
+  ]).filter((trait) => trait.length <= 40)
+}
+
+function referenceStrengths(template: StructuredPromptTemplate, governance: TemplateGovernance): string[] {
+  return uniqueStrings([
+    governance.subjectTypes.includes('product') ? '产品主体表达' : undefined,
+    governance.intents.includes('brand-promotion') ? '品牌传播结构' : undefined,
+    governance.intents.includes('social-seeding') ? '社媒传播感' : undefined,
+    governance.textDensity.includes('low') ? '少字高冲击版式' : undefined,
+    template.promptPattern.length > 500 ? '完整视觉指令密度' : '轻量结构灵感',
+  ])
+}
+
+function referenceRisks(template: StructuredPromptTemplate): string[] {
+  return uniqueStrings([
+    template.author || template.sourceUrl ? '来源痕迹需去除' : undefined,
+    template.promptPattern.includes('@') || template.promptPattern.includes('签名') ? '可能包含作者署名' : undefined,
+    template.promptPattern.length > 1200 ? '原文过长不宜直用' : undefined,
+    template.isPlaceholderOnly ? '占位内容不可用' : undefined,
+  ])
+}
+
+export function searchLegacyReferenceInsights(query: string, category: PromptTemplateCategory | 'all' = 'all', visualIntent?: VisualIntent, limit = 5): LegacyReferenceInsight[] {
+  const keywords = extractSearchKeywords(query)
+  const intent = visualIntent ?? extractVisualIntent(query)
+  return getLegacyReferenceTemplates()
+    .filter(isUsableReferenceTemplate)
+    .filter((template) => category === 'all' || template.category === category)
+    .map((template, index) => {
+      const governance = deriveTemplateGovernance(template)
+      const fields = [
+        template.name,
+        template.description,
+        template.sourceTitle ?? '',
+        ...template.tags,
+        ...template.examples,
+        ...governance.intents,
+        ...governance.platforms,
+        ...governance.subjectTypes,
+        ...governance.textDensity,
+      ]
+      const result = keywords.length ? scoreText(fields, keywords, 3) : { score: 8, matched: [] }
+      const categoryBonus = intent.category && template.category === intent.category ? 10 : 0
+      const score = result.score + categoryBonus + governanceScore(template, intent) + Math.max(0, 5 - index * 0.1)
+      return {
+        id: template.id,
+        title: template.name,
+        category: template.category,
+        sourceRole: 'reference' as const,
+        qualityTier: governance.qualityTier,
+        traits: referenceTraits(template, governance).slice(0, 8),
+        keywords: uniqueStrings([...result.matched, ...template.tags, ...governance.intents, ...governance.platforms]).slice(0, 10),
+        strengths: referenceStrengths(template, governance).slice(0, 4),
+        risks: referenceRisks(template).slice(0, 4),
+        score,
+        matchedKeywords: result.matched,
+      }
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
 }
 
 export function searchStructuredStyles(query: string, category?: PromptTemplateCategory, visualIntent?: VisualIntent): RankedResult<StructuredStylePreset>[] {

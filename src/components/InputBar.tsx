@@ -78,7 +78,7 @@ export default function InputBar() {
   }, [setPrompt])
 
   const inspectRecommendation = useCallback((recommendation: PromptRecommendation) => {
-    setAgentSeed(`请详细解释并优化这个推荐组合：模板 ${recommendation.template.id}「${recommendation.template.name}」，画风 ${recommendation.styles.map((style) => style.id).join(', ') || '无'}。当前输入：${prompt}`)
+    setAgentSeed(`请基于这条结构策略继续优化：${recommendation.template.name}；视觉语言 ${recommendation.styles.map((style) => style.name).join('、') || '无'}。不要直接套用固定模板，请提取关键词和策略链。当前输入：${prompt}`)
   }, [prompt])
 
   useEffect(() => {
@@ -541,7 +541,7 @@ export default function InputBar() {
 
           {promptRecommendations.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">推荐模板</span>
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">推荐策略</span>
               {promptRecommendations.map((recommendation) => (
                 <div
                   key={recommendation.template.id}
@@ -553,7 +553,7 @@ export default function InputBar() {
                     title={recommendation.reason}
                     className="max-w-[180px] truncate font-medium"
                   >
-                    {recommendation.template.name} {(recommendation.confidence * 100).toFixed(0)}%
+                    {recommendation.template.name.replace(/模板|Template/gi, '策略')} {(recommendation.confidence * 100).toFixed(0)}%
                   </button>
                   <button
                     type="button"

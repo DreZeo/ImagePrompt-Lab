@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm'
 import { useStore } from '../store'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { callPromptAgent, resolveEffectiveChatSettings, type PresetContext } from '../lib/chatApi'
-import { adaptTemplatePrompt } from '../data/promptPresets'
 import { createTemplateDraftFromPrompt, extractAssistantFinalPrompt, parseAssistantComposition, renderTemplatePrompt, saveUserTemplate, validateAssistantComposition, validateTemplateDraft, type TemplateDraft } from '../data/structuredPrompts'
 import type { ChatMessage } from '../types'
 
@@ -15,8 +14,6 @@ interface PromptAgentModalProps {
   seedMessage?: string
   onSeedConsumed?: () => void
 }
-
-type CandidateSelection = { type: 'style' | 'template'; id: string }
 
 function appendToPrompt(currentPrompt: string, addition: string): string {
   const current = currentPrompt.trim()
@@ -46,7 +43,6 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
   const [error, setError] = useState<string | null>(null)
   const [lastPresetContext, setLastPresetContext] = useState<PresetContext | null>(null)
   const [presetOnly, setPresetOnly] = useState(false)
-  const [selectedCandidate, setSelectedCandidate] = useState<CandidateSelection | null>(null)
   const [isCollapsed, setIsCollapsed] = useState(true)
   const [isPresetContextCollapsed, setIsPresetContextCollapsed] = useState(true)
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null)
@@ -63,18 +59,12 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
   const assistantPromptText = lastAssistantMessage ? extractFinalPrompt(lastAssistantMessage.content) : ''
   const assistantComposition = lastAssistantMessage ? parseAssistantComposition(lastAssistantMessage.content) : null
   const assistantValidation = assistantComposition ? validateAssistantComposition(assistantComposition, { presetOnly, visualIntent: lastPresetContext?.visualIntent }) : null
-  const selectedStyle = selectedCandidate?.type === 'style'
-    ? lastPresetContext?.styles.find((style) => style.id === selectedCandidate.id)
-    : undefined
-  const selectedTemplate = selectedCandidate?.type === 'template'
-    ? lastPresetContext?.templates.find((template) => template.id === selectedCandidate.id)
-    : undefined
-  const latestQuery = lastPresetContext?.query ?? ''
   const retrievalKeywords = useMemo(() => {
     if (!lastPresetContext) return []
     return uniqueList([
       ...lastPresetContext.styles.flatMap((style) => style.matchedKeywords),
       ...lastPresetContext.templates.flatMap((template) => template.matchedKeywords),
+      ...lastPresetContext.references.flatMap((reference) => reference.keywords),
       ...lastPresetContext.knowledge.rules.flatMap((rule) => rule.matchedKeywords),
     ]).slice(0, 8)
   }, [lastPresetContext])
@@ -130,7 +120,6 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     if (!content || loading) return
 
     setError(null)
-    setSelectedCandidate(null)
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content }]
     setMessages(nextMessages)
     setInput('')
@@ -170,19 +159,6 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     setShowSettings(true)
   }
 
-  const applyStyle = (mode: 'insert' | 'replace') => {
-    if (!selectedStyle) return
-    const next = mode === 'insert' ? appendToPrompt(prompt, selectedStyle.promptFragment) : selectedStyle.promptFragment
-    onApplyPrompt(next)
-  }
-
-  const applyTemplate = (mode: 'insert' | 'replace', adapt: boolean) => {
-    if (!selectedTemplate) return
-    const templatePrompt = adapt ? adaptTemplatePrompt(selectedTemplate.prompt, latestQuery) : selectedTemplate.prompt.trim()
-    const next = mode === 'insert' ? appendToPrompt(prompt, templatePrompt) : templatePrompt
-    onApplyPrompt(next)
-  }
-
   const createDraft = () => {
     const sourcePrompt = assistantPromptText || prompt
     if (!sourcePrompt.trim()) return
@@ -219,7 +195,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
         <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-200/70 dark:border-white/[0.08]">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">AI 提示词助手</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">可检索本地风格和模板，只写入 prompt</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">检索本地知识链，只写入 prompt</p>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
@@ -236,7 +212,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
 
         <div className="px-4 sm:px-5 py-3 border-b border-gray-200/70 dark:border-white/[0.08]">
           <label className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 dark:bg-white/[0.03] px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
-            <span>只从已检索预设中选择</span>
+            <span>仅使用本地知识</span>
             <input
               type="checkbox"
               checked={presetOnly}
@@ -249,7 +225,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
         <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3 custom-scrollbar">
           {messages.length === 0 && (
             <div className="rounded-2xl border border-dashed border-gray-200 dark:border-white/[0.08] p-4 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-              描述你想生成的图片。我会先检索本地风格/模板候选，再帮你分析和输出最终 prompt。
+              描述你想生成的图片。我会先构建本地知识链，再帮你分析视觉策略并输出最终 prompt。
             </div>
           )}
 
@@ -258,10 +234,10 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-100">本地知识检索完成</div>
-                  <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">基于输入意图完成风格、模板、规则召回</div>
+                  <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">基于输入意图完成结构策略、视觉语言、专业规则召回</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-xs">
-                  {lastPresetContext.presetOnly && <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-600 dark:text-blue-300">preset-only</span>}
+                  {lastPresetContext.presetOnly && <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-600 dark:text-blue-300">仅本地知识</span>}
                   <button onClick={() => setIsPresetContextCollapsed((value) => !value)} className="rounded-full bg-white/90 px-2.5 py-1 text-slate-500 shadow-sm ring-1 ring-slate-200/70 hover:text-blue-600 dark:bg-white/[0.06] dark:text-slate-300 dark:ring-white/[0.08] dark:hover:text-blue-300">
                     {isPresetContextCollapsed ? '展开' : '收起'}
                   </button>
@@ -270,10 +246,10 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
 
               <div className="grid grid-cols-4 gap-1.5">
                 {[
-                  ['风格', lastPresetContext.styles.length],
-                  ['模板', lastPresetContext.templates.length],
-                  ['规则', lastPresetContext.knowledge.rules.length],
-                  ['推荐', lastPresetContext.recommendations.length],
+                  ['视觉语言', lastPresetContext.styles.length],
+                  ['结构策略', lastPresetContext.strategyChains.length],
+                  ['专业规则', lastPresetContext.knowledge.rules.length],
+                  ['参考灵感', lastPresetContext.references.length],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl bg-white/80 px-3 py-2.5 text-center shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:ring-white/[0.06]">
                     <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</div>
@@ -284,8 +260,8 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
 
               <div className="rounded-2xl bg-white/75 p-2.5 text-[11px] text-slate-500 shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:text-slate-400 dark:ring-white/[0.06]">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-medium text-slate-600 dark:text-slate-300">检索链路</span>
-                  <span className="text-slate-400 dark:text-slate-500">输入理解 → 关键词抽取 → 候选召回 → 规则约束</span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">知识链路</span>
+                  <span className="text-slate-400 dark:text-slate-500">输入理解 → 策略组装 → 规则约束 → 参考去污染</span>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
@@ -310,18 +286,31 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
 
               {!isPresetContextCollapsed && (
                 <>
-                  {lastPresetContext.recommendations.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">结构化推荐</div>
-                      {lastPresetContext.recommendations.map((recommendation) => (
-                        <div key={recommendation.template.id} className="rounded-2xl bg-white/85 p-2.5 text-xs text-slate-600 shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06]">
+                  {lastPresetContext.strategyChains.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">策略链</div>
+                      {lastPresetContext.strategyChains.map((chain) => (
+                        <div key={chain.id} className="rounded-2xl bg-white/85 p-3 text-xs text-slate-600 shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06]">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="font-medium text-slate-800 dark:text-slate-100">{recommendation.template.name}</div>
-                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 dark:text-blue-300">{(recommendation.confidence * 100).toFixed(0)}%</span>
+                            <div className="font-medium text-slate-800 dark:text-slate-100">{chain.title}</div>
+                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 dark:text-blue-300">{(chain.confidence * 100).toFixed(0)}%</span>
                           </div>
-                          <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{recommendation.reason}</div>
-                          <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
-                            {(recommendation.styles.length ? recommendation.styles.map((style) => style.name) : ['无画风']).map((styleName) => <span key={styleName} className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">{styleName}</span>)}
+                          <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{chain.reason}</div>
+                          <div className="mt-2 grid grid-cols-1 gap-2">
+                            {[
+                              ['结构策略', chain.keywordPack.structure],
+                              ['构图线索', chain.keywordPack.composition],
+                              ['视觉语言', chain.keywordPack.visual],
+                              ['质量约束', chain.keywordPack.quality],
+                              ['负面控制', chain.keywordPack.negative],
+                            ].map(([label, values]) => (
+                              <div key={label as string}>
+                                <div className="mb-1 text-[10px] text-slate-400 dark:text-slate-500">{label as string}</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {(values as string[]).length ? (values as string[]).slice(0, 6).map((value) => <span key={value} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">{shortText(value, 32)}</span>) : <span className="text-[11px] text-slate-400">无</span>}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ))}
@@ -341,83 +330,36 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                     </div>
                   )}
 
-                  {lastPresetContext.styles.length > 0 && (
+                  {lastPresetContext.references.length > 0 && (
                     <div className="space-y-1.5 border-t border-slate-200/60 dark:border-white/[0.06] pt-3">
-                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">风格候选</div>
+                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">参考灵感（不直接套用）</div>
                       <div className="grid grid-cols-1 gap-1.5">
-                        {lastPresetContext.styles.map((style) => (
-                          <button
-                            key={style.id}
-                            onClick={() => setSelectedCandidate({ type: 'style', id: style.id })}
-                            className={`text-left rounded-2xl px-3 py-2.5 text-xs transition ${selectedCandidate?.id === style.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span><span className="font-medium">{style.id}</span> · {style.name}</span>
-                              <span className="opacity-70">score {style.score}</span>
+                        {lastPresetContext.references.slice(0, 3).map((reference) => (
+                          <div key={reference.id} className="rounded-2xl bg-white/70 px-3 py-2 text-xs text-slate-600 shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06]">
+                            <div className="font-medium">{shortText(reference.title, 72)}</div>
+                            <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                              {[...reference.traits, ...reference.strengths].slice(0, 6).map((item) => <span key={item} className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-200">{item}</span>)}
                             </div>
-                            <div className="mt-1 text-[11px] opacity-75">{style.keyword}{style.matchedKeywords.length ? ` · ${style.matchedKeywords.slice(0, 3).join(' / ')}` : ''}</div>
-                          </button>
+                            {reference.risks.length > 0 && <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">规避：{reference.risks.join('、')}</div>}
+                          </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {lastPresetContext.templates.length > 0 && (
-                    <div className="space-y-1.5 border-t border-slate-200/60 dark:border-white/[0.06] pt-3">
-                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">模板候选</div>
-                      <div className="grid grid-cols-1 gap-1.5">
-                        {lastPresetContext.templates.map((template) => (
-                          <button
-                            key={template.id}
-                            onClick={() => setSelectedCandidate({ type: 'template', id: template.id })}
-                            className={`text-left rounded-2xl px-3 py-2.5 text-xs transition ${selectedCandidate?.id === template.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span><span className="font-medium">{template.id}</span> · {template.category}</span>
-                              <span className="opacity-70">score {template.score}</span>
-                            </div>
-                            <span className="block mt-0.5 opacity-80">{shortText(template.title)}</span>
-                            {template.matchedKeywords.length > 0 && <span className="block mt-1 text-[11px] opacity-65">{template.matchedKeywords.slice(0, 4).join(' / ')}</span>}
-                          </button>
-                        ))}
-                      </div>
+                  <details className="border-t border-slate-200/60 pt-3 text-[11px] text-slate-500 dark:border-white/[0.06] dark:text-slate-400">
+                    <summary className="cursor-pointer font-medium">内部证据</summary>
+                    <div className="mt-2 space-y-2">
+                      {lastPresetContext.styles.length > 0 && <div>视觉语言 ID：{lastPresetContext.styles.map((style) => style.id).join(', ')}</div>}
+                      {lastPresetContext.templates.length > 0 && <div>结构来源 ID：{lastPresetContext.templates.map((template) => template.id).join(', ')}</div>}
+                      {lastPresetContext.references.length > 0 && <div>参考来源 ID：{lastPresetContext.references.map((reference) => reference.id).join(', ')}</div>}
                     </div>
-                  )}
+                  </details>
 
-                  {!lastPresetContext.styles.length && !lastPresetContext.templates.length && (
-                    <div className="text-xs text-gray-400 dark:text-gray-500">没有找到本地预设候选，可以换关键词或关闭 preset-only。</div>
+                  {!lastPresetContext.styles.length && !lastPresetContext.templates.length && !lastPresetContext.strategyChains.length && (
+                    <div className="text-xs text-gray-400 dark:text-gray-500">没有找到合适的本地知识，可以换关键词或关闭仅本地知识。</div>
                   )}
                 </>
-              )}
-
-              {(selectedStyle || selectedTemplate) && (
-                <div className="rounded-2xl bg-white/90 dark:bg-black/20 border border-gray-200/70 dark:border-white/[0.08] p-3 space-y-2">
-                  {selectedStyle && (
-                    <>
-                      <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{selectedStyle.id} · {selectedStyle.name}</div>
-                      <div className="text-[11px] text-gray-400 dark:text-gray-500">{selectedStyle.keyword} · {selectedStyle.description}</div>
-                      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-gray-100 dark:bg-white/[0.04] p-2 text-[11px] text-gray-600 dark:text-gray-300">{selectedStyle.promptFragment}</pre>
-                      <div className="flex gap-2">
-                        <button onClick={() => applyStyle('insert')} className="flex-1 rounded-xl bg-gray-100 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300">插入风格</button>
-                        <button onClick={() => applyStyle('replace')} className="flex-1 rounded-xl bg-blue-500 px-2 py-1.5 text-xs text-white hover:bg-blue-600">替换为风格</button>
-                      </div>
-                    </>
-                  )}
-                  {selectedTemplate && (
-                    <>
-                      <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{selectedTemplate.id} · {selectedTemplate.category}</div>
-                      <div className="text-[11px] text-gray-400 dark:text-gray-500">{selectedTemplate.author ? `@${selectedTemplate.author}` : '未知作者'}{selectedTemplate.lang ? ` · ${selectedTemplate.lang}` : ''}</div>
-                      <div className="text-xs text-gray-600 dark:text-gray-300">{selectedTemplate.title}</div>
-                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-gray-100 dark:bg-white/[0.04] p-2 text-[11px] text-gray-600 dark:text-gray-300">{selectedTemplate.prompt}</pre>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => applyTemplate('insert', false)} className="rounded-xl bg-gray-100 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300">插入原文</button>
-                        <button onClick={() => applyTemplate('replace', false)} className="rounded-xl bg-gray-100 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300">替换原文</button>
-                        <button onClick={() => applyTemplate('insert', true)} className="rounded-xl bg-blue-500/10 px-2 py-1.5 text-xs text-blue-600 hover:bg-blue-500/15 dark:text-blue-300">插入适配</button>
-                        <button onClick={() => applyTemplate('replace', true)} className="rounded-xl bg-blue-500 px-2 py-1.5 text-xs text-white hover:bg-blue-600">替换适配</button>
-                      </div>
-                    </>
-                  )}
-                </div>
               )}
             </div>
           )}
