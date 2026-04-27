@@ -45,6 +45,42 @@ input[type="number"] {
   0%, 100% { border-color: #3b82f6; }
   50% { border-color: #93c5fd; }
 }
+
+/* AI assistant loading dots */
+@keyframes loading-dot {
+  0%, 20% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.loading-dots span {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  margin: 0 2px;
+  animation: loading-dot 1.4s infinite ease-in-out both;
+}
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+/* AI assistant panel: slide in from right */
+@keyframes panel-slide-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-panel-slide-in {
+  animation: panel-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Subtle attention pulse for collapsed tab */
+@keyframes attention-glow {
+  0%, 100% { box-shadow: 0 8px 30px rgb(0,0,0,0.16); }
+  50% { box-shadow: 0 8px 30px rgb(59,130,246,0.3); }
+}
+.animate-attention-glow {
+  animation: attention-glow 3s ease-in-out infinite;
+}
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useStore } from '../store'
@@ -52,6 +52,8 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null)
   const [draftStatus, setDraftStatus] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const agentTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const agentPrevHeightRef = useRef(42)
 
   useCloseOnEscape(!isCollapsed, () => setIsCollapsed(true))
 
@@ -89,6 +91,39 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     setInput(seedMessage)
     onSeedConsumed?.()
   }, [seedMessage, onSeedConsumed])
+
+  const adjustAgentTextareaHeight = useCallback(() => {
+    const el = agentTextareaRef.current
+    if (!el) return
+    const maxH = 200
+    el.style.transition = 'none'
+    el.style.height = '0'
+    el.style.overflowY = 'hidden'
+    const scrollH = el.scrollHeight
+    const minH = 42
+    const desired = Math.max(scrollH, minH)
+    const targetH = desired > maxH ? maxH : desired
+    el.style.height = agentPrevHeightRef.current + 'px'
+    void el.offsetHeight
+    el.style.transition = 'height 150ms ease, border-color 200ms, box-shadow 200ms'
+    el.style.height = targetH + 'px'
+    el.style.overflowY = desired > maxH ? 'auto' : 'hidden'
+    agentPrevHeightRef.current = targetH
+  }, [])
+
+  useEffect(() => {
+    adjustAgentTextareaHeight()
+  }, [input, adjustAgentTextareaHeight])
+
+  // Auto-focus the textarea when panel opens
+  useEffect(() => {
+    if (!isCollapsed) {
+      const timer = window.setTimeout(() => {
+        agentTextareaRef.current?.focus()
+      }, 100)
+      return () => window.clearTimeout(timer)
+    }
+  }, [isCollapsed])
 
   const sendMessage = async () => {
     const content = input.trim()
@@ -170,7 +205,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     return (
       <button
         onClick={() => setIsCollapsed(false)}
-        className="fixed right-0 top-1/2 z-[80] -translate-y-1/2 rounded-l-2xl border border-r-0 border-white/60 bg-white/95 px-2.5 py-4 text-xs font-medium text-gray-600 shadow-[0_8px_30px_rgb(0,0,0,0.16)] ring-1 ring-black/5 transition hover:bg-gray-50 dark:border-white/[0.08] dark:bg-gray-900/95 dark:text-gray-300 dark:ring-white/10 dark:hover:bg-gray-800"
+        className="fixed right-0 top-1/2 z-[80] -translate-y-1/2 rounded-l-2xl border border-r-0 border-white/60 bg-white/95 px-2.5 py-4 text-xs font-medium text-gray-600 shadow-[0_8px_30px_rgb(0,0,0,0.16)] ring-1 ring-black/5 transition hover:bg-gray-50 animate-attention-glow dark:border-white/[0.08] dark:bg-gray-900/95 dark:text-gray-300 dark:ring-white/10 dark:hover:bg-gray-800"
         title="展开 AI 提示词助手"
       >
         <span className="block [writing-mode:vertical-rl] tracking-wider">AI 助手</span>
@@ -180,7 +215,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
 
   return (
     <aside className="fixed inset-y-0 right-0 z-[80] flex w-full max-w-full justify-end pointer-events-none sm:w-[min(520px,calc(100vw-24px))]">
-      <div className="pointer-events-auto flex h-full w-full flex-col border-l border-gray-200/80 bg-white/95 shadow-[0_0_45px_rgb(0,0,0,0.18)] ring-1 ring-black/5 dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">
+      <div className="pointer-events-auto flex h-full w-full flex-col border-l border-gray-200/80 bg-white/95 shadow-[0_0_45px_rgb(0,0,0,0.18)] ring-1 ring-black/5 animate-panel-slide-in dark:border-white/[0.08] dark:bg-gray-900/95 dark:ring-white/10">
         <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4 border-b border-gray-200/70 dark:border-white/[0.08]">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">AI 提示词助手</h2>
@@ -190,16 +225,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
             <button
               onClick={() => setIsCollapsed(true)}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-white/[0.06] transition-colors"
-              title="收缩"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setIsCollapsed(true)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-200 dark:hover:bg-white/[0.06] transition-colors"
-              title="收缩为侧边栏"
+              title="收起面板"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -249,7 +275,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                   ['规则', lastPresetContext.knowledge.rules.length],
                   ['推荐', lastPresetContext.recommendations.length],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl bg-white/80 px-2 py-2 text-center shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:ring-white/[0.06]">
+                  <div key={label} className="rounded-2xl bg-white/80 px-3 py-2.5 text-center shadow-sm ring-1 ring-slate-200/60 dark:bg-white/[0.04] dark:ring-white/[0.06]">
                     <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</div>
                     <div className="text-[10px] text-slate-400 dark:text-slate-500">{label}</div>
                   </div>
@@ -261,7 +287,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                   <span className="font-medium text-slate-600 dark:text-slate-300">检索链路</span>
                   <span className="text-slate-400 dark:text-slate-500">输入理解 → 关键词抽取 → 候选召回 → 规则约束</span>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">意图解析</div>
                     <div className="flex flex-wrap gap-1">
@@ -303,7 +329,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                   )}
 
                   {lastPresetContext.knowledge.rules.length > 0 && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 border-t border-slate-200/60 dark:border-white/[0.06] pt-3">
                       <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">专业规则</div>
                       <div className="flex flex-wrap gap-1.5">
                         {lastPresetContext.knowledge.rules.slice(0, 5).map((entry) => (
@@ -316,14 +342,14 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                   )}
 
                   {lastPresetContext.styles.length > 0 && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 border-t border-slate-200/60 dark:border-white/[0.06] pt-3">
                       <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">风格候选</div>
                       <div className="grid grid-cols-1 gap-1.5">
                         {lastPresetContext.styles.map((style) => (
                           <button
                             key={style.id}
                             onClick={() => setSelectedCandidate({ type: 'style', id: style.id })}
-                            className={`text-left rounded-2xl px-2.5 py-2 text-xs transition ${selectedCandidate?.id === style.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
+                            className={`text-left rounded-2xl px-3 py-2.5 text-xs transition ${selectedCandidate?.id === style.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span><span className="font-medium">{style.id}</span> · {style.name}</span>
@@ -337,14 +363,14 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                   )}
 
                   {lastPresetContext.templates.length > 0 && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 border-t border-slate-200/60 dark:border-white/[0.06] pt-3">
                       <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">模板候选</div>
                       <div className="grid grid-cols-1 gap-1.5">
                         {lastPresetContext.templates.map((template) => (
                           <button
                             key={template.id}
                             onClick={() => setSelectedCandidate({ type: 'template', id: template.id })}
-                            className={`text-left rounded-2xl px-2.5 py-2 text-xs transition ${selectedCandidate?.id === template.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
+                            className={`text-left rounded-2xl px-3 py-2.5 text-xs transition ${selectedCandidate?.id === template.id ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/85 text-slate-600 shadow-sm ring-1 ring-slate-200/60 hover:bg-white dark:bg-white/[0.04] dark:text-slate-300 dark:ring-white/[0.06] dark:hover:bg-white/[0.08]'}`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span><span className="font-medium">{template.id}</span> · {template.category}</span>
@@ -414,7 +440,14 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
             </div>
           ))}
 
-          {loading && <div className="text-xs text-gray-400 dark:text-gray-500">AI 正在分析...</div>}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 px-1">
+              <span>AI 正在分析</span>
+              <span className="loading-dots">
+                <span /><span /><span />
+              </span>
+            </div>
+          )}
           {error && (
             <div className="rounded-xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 px-3 py-2 text-xs">
               {error} <button className="underline" onClick={openSettings}>打开设置</button>
@@ -476,22 +509,23 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
         <div className="p-4 sm:p-5 border-t border-gray-200/70 dark:border-white/[0.08]">
           <div className="flex items-end gap-2">
             <textarea
+              ref={agentTextareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                  e.preventDefault()
-                  sendMessage()
-                }
+                if (e.key !== 'Enter') return
+                if (e.shiftKey) return
+                e.preventDefault()
+                sendMessage()
               }}
-              rows={2}
+              rows={1}
               placeholder="例如：我想做一张小红书风格的高级咖啡产品海报，少文字..."
               className="flex-1 rounded-2xl border border-gray-200/70 dark:border-white/[0.08] bg-white/70 dark:bg-white/[0.03] px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
             <button
               onClick={sendMessage}
               disabled={!canSend}
-              className="h-[58px] px-4 rounded-2xl bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed dark:disabled:bg-white/[0.08] transition-colors"
+              className="self-stretch px-4 rounded-2xl bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed dark:disabled:bg-white/[0.08] transition-colors"
             >
               发送
             </button>

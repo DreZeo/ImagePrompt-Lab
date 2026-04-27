@@ -159,10 +159,10 @@ export default function InputBar() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault()
-      submitTask()
-    }
+    if (e.key !== 'Enter') return
+    if (e.shiftKey) return
+    e.preventDefault()
+    submitTask()
   }
 
   // 粘贴图片
@@ -620,7 +620,7 @@ export default function InputBar() {
                         ? 'bg-gray-300 dark:bg-white/[0.06] text-white cursor-pointer'
                         : 'bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-white/[0.04] disabled:opacity-50 disabled:cursor-not-allowed'
                     }`}
-                    title={settings.apiKey ? '生成 (Ctrl+Enter)' : '请先配置 API'}
+                    title={settings.apiKey ? '生成 (Enter)' : '请先配置 API'}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
