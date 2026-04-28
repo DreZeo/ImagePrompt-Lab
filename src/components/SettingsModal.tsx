@@ -2,7 +2,7 @@
 import { normalizeBaseUrl } from '../lib/api'
 import { listChatModels, resolveEffectiveChatSettings, testChatConnection, withDefaultChatSettings } from '../lib/chatApi'
 import { useStore, exportData, importData, clearAllData } from '../store'
-import { DEFAULT_CHAT_SETTINGS, DEFAULT_SETTINGS, type AppSettings } from '../types'
+import { DEFAULT_CHAT_SETTINGS, DEFAULT_SETTINGS, normalizeAppSettings, type AppSettings } from '../types'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 
 export default function SettingsModal() {
@@ -12,9 +12,10 @@ export default function SettingsModal() {
   const setSettings = useStore((s) => s.setSettings)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const importInputRef = useRef<HTMLInputElement>(null)
-  const [draft, setDraft] = useState<AppSettings>(withDefaultChatSettings(settings))
-  const [timeoutInput, setTimeoutInput] = useState(String(settings.timeout))
-  const [chatTimeoutInput, setChatTimeoutInput] = useState(String(withDefaultChatSettings(settings).chat.timeout))
+  const normalizedSettings = normalizeAppSettings(settings)
+  const [draft, setDraft] = useState<AppSettings>(normalizedSettings)
+  const [timeoutInput, setTimeoutInput] = useState(String(normalizedSettings.timeout))
+  const [chatTimeoutInput, setChatTimeoutInput] = useState(String(normalizedSettings.chat.timeout))
   const [showApiKey, setShowApiKey] = useState(false)
   const [showChatApiKey, setShowChatApiKey] = useState(false)
   const [chatModels, setChatModels] = useState<string[]>([])
@@ -24,7 +25,7 @@ export default function SettingsModal() {
 
   useEffect(() => {
     if (showSettings) {
-      const normalizedSettings = withDefaultChatSettings(settings)
+      const normalizedSettings = normalizeAppSettings(settings)
       setDraft(normalizedSettings)
       setTimeoutInput(String(normalizedSettings.timeout))
       setChatTimeoutInput(String(normalizedSettings.chat.timeout))
@@ -33,21 +34,22 @@ export default function SettingsModal() {
   }, [showSettings, settings])
 
   const commitSettings = (nextDraft: AppSettings) => {
-    const normalizedDraft = {
-      ...nextDraft,
-      baseUrl: normalizeBaseUrl(nextDraft.baseUrl.trim() || DEFAULT_SETTINGS.baseUrl),
-      apiKey: nextDraft.apiKey,
-      model: nextDraft.model.trim() || DEFAULT_SETTINGS.model,
-      timeout: Number(nextDraft.timeout) || DEFAULT_SETTINGS.timeout,
+    const safeDraft = normalizeAppSettings(nextDraft)
+    const normalizedDraft = normalizeAppSettings({
+      ...safeDraft,
+      baseUrl: normalizeBaseUrl(safeDraft.baseUrl.trim() || DEFAULT_SETTINGS.baseUrl),
+      apiKey: safeDraft.apiKey,
+      model: safeDraft.model.trim() || DEFAULT_SETTINGS.model,
+      timeout: Number(safeDraft.timeout) || DEFAULT_SETTINGS.timeout,
       chat: {
         ...DEFAULT_CHAT_SETTINGS,
-        ...(nextDraft.chat ?? {}),
+        ...safeDraft.chat,
         useImageApiConfig: false,
-        baseUrl: normalizeBaseUrl(nextDraft.chat?.baseUrl.trim() || ''),
-        model: nextDraft.chat?.model.trim() || DEFAULT_CHAT_SETTINGS.model,
-        timeout: Number(nextDraft.chat?.timeout) || DEFAULT_CHAT_SETTINGS.timeout,
+        baseUrl: normalizeBaseUrl(safeDraft.chat.baseUrl.trim() || ''),
+        model: safeDraft.chat.model.trim() || DEFAULT_CHAT_SETTINGS.model,
+        timeout: Number(safeDraft.chat.timeout) || DEFAULT_CHAT_SETTINGS.timeout,
       },
-    }
+    })
     setDraft(normalizedDraft)
     setSettings(normalizedDraft)
   }

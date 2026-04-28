@@ -7,7 +7,7 @@ import type {
   TaskRecord,
   ExportData,
 } from './types'
-import { DEFAULT_SETTINGS, DEFAULT_PARAMS } from './types'
+import { DEFAULT_SETTINGS, DEFAULT_PARAMS, normalizeAppSettings } from './types'
 import {
   getAllTasks,
   putTask,
@@ -125,17 +125,16 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Settings
-      settings: { ...DEFAULT_SETTINGS },
+      settings: normalizeAppSettings(DEFAULT_SETTINGS),
             setSettings: (s) => set((st) => ({
-        settings: {
+        settings: normalizeAppSettings({
           ...st.settings,
           ...s,
           chat: {
-            ...DEFAULT_SETTINGS.chat,
-            ...(st.settings.chat ?? {}),
-            ...(s.chat ?? {}),
+            ...normalizeAppSettings(st.settings).chat,
+            ...(typeof s.chat === 'object' && s.chat !== null && !Array.isArray(s.chat) ? s.chat : {}),
           },
-        },
+        }),
       })),
 
       // Input
@@ -325,6 +324,22 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'image-prompt-lab',
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<AppState>
+        return {
+          ...currentState,
+          ...persisted,
+          settings: normalizeAppSettings(persisted.settings ?? currentState.settings),
+          params: { ...DEFAULT_PARAMS, ...(persisted.params ?? currentState.params) },
+          promptAgentSessions: Array.isArray(persisted.promptAgentSessions)
+            ? persisted.promptAgentSessions
+            : currentState.promptAgentSessions,
+          activePromptAgentSessionId:
+            typeof persisted.activePromptAgentSessionId === 'string' || persisted.activePromptAgentSessionId === null
+              ? persisted.activePromptAgentSessionId
+              : currentState.activePromptAgentSessionId,
+        }
+      },
       partialize: (state) => ({
         settings: state.settings,
         params: state.params,

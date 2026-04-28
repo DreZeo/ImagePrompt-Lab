@@ -168,6 +168,37 @@ export interface TemplateDraft extends StructuredPromptTemplate {
   createdAt: number
 }
 
+export type AssistantEvidenceSourceType = 'template' | 'style' | 'knowledge' | 'reference' | 'strategy' | 'custom'
+export type AssistantValidationSeverity = 'info' | 'warning' | 'error'
+
+export interface AssistantBorrowedSource {
+  sourceType?: AssistantEvidenceSourceType
+  id?: string
+  title?: string
+  aspects: string[]
+  reason?: string
+}
+
+export interface AssistantRejectedTrait {
+  sourceType?: AssistantEvidenceSourceType
+  id?: string
+  trait: string
+  reason?: string
+}
+
+export interface AssistantValidationNote {
+  type?: 'completeness' | 'anti-template' | 'compatibility' | 'local-only' | 'other'
+  severity?: AssistantValidationSeverity
+  message: string
+}
+
+export interface AssistantRewriteStages {
+  retrieval?: string[]
+  judgment?: string[]
+  expression?: string[]
+  validation?: string[]
+}
+
 export interface ParsedAssistantComposition {
   intent?: Partial<VisualIntent> | Record<string, unknown>
   recommendations?: Array<{
@@ -177,6 +208,10 @@ export interface ParsedAssistantComposition {
     reason?: string
     filledSlots?: Record<string, string>
   }>
+  borrowedSources?: AssistantBorrowedSource[]
+  rejectedTraits?: AssistantRejectedTrait[]
+  validationNotes?: AssistantValidationNote[]
+  rewriteStages?: AssistantRewriteStages
   finalPrompt?: string
   negativePrompt?: string
   actions?: string[]
@@ -191,6 +226,7 @@ export interface AssistantCompositionValidation {
   invalidStyleIds: string[]
   missingRequiredSlots: string[]
   warnings: string[]
+  promptWarnings?: string[]
 }
 
 export const TEMPLATE_CATEGORY_LABELS: Record<PromptTemplateCategory, string> = {
@@ -2012,6 +2048,153 @@ export function parseAssistantComposition(text: string): ParsedAssistantComposit
   }
 }
 
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => Array.isArray(item) ? asStringArray(item) : [String(item ?? '').trim()])
+      .filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value.split(/[,，;；\n]+/).map((item) => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function normalizeEvidenceSourceType(value: unknown): AssistantEvidenceSourceType | undefined {
+  const text = String(value ?? '').toLowerCase()
+  if (['template', 'style', 'knowledge', 'reference', 'strategy', 'custom'].includes(text)) {
+    return text as AssistantEvidenceSourceType
+  }
+  if (text.includes('rule') || text.includes('知识')) return 'knowledge'
+  if (text.includes('preset') || text.includes('模板')) return 'template'
+  if (text.includes('风格') || text.includes('style')) return 'style'
+  if (text.includes('参考') || text.includes('legacy')) return 'reference'
+  return undefined
+}
+
+function normalizeBorrowedSources(value: unknown): AssistantBorrowedSource[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => {
+    if (typeof item === 'string') return { aspects: [item] }
+    const entry = item as Record<string, unknown>
+    const aspects = asStringArray(entry.aspects ?? entry.borrowedAspects ?? entry.borrow ?? entry.parts ?? entry.traits)
+    const fallback = [entry.aspect, entry.trait, entry.reason, entry.title].map((field) => String(field ?? '').trim()).filter(Boolean)
+    return {
+      sourceType: normalizeEvidenceSourceType(entry.sourceType ?? entry.type ?? entry.source),
+      id: typeof entry.id === 'string' ? entry.id : typeof entry.sourceId === 'string' ? entry.sourceId : undefined,
+      title: typeof entry.title === 'string' ? entry.title : typeof entry.name === 'string' ? entry.name : undefined,
+      aspects: aspects.length ? aspects : fallback.slice(0, 3),
+      reason: typeof entry.reason === 'string' ? entry.reason : undefined,
+    }
+  }).filter((item) => item.aspects.length || item.id || item.title)
+}
+
+function normalizeRejectedTraits(value: unknown): AssistantRejectedTrait[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => {
+    if (typeof item === 'string') return { trait: item }
+    const entry = item as Record<string, unknown>
+    const trait = String(entry.trait ?? entry.aspect ?? entry.rejectedTrait ?? entry.name ?? '').trim()
+    const reason = typeof entry.reason === 'string' ? entry.reason : undefined
+    return {
+      sourceType: normalizeEvidenceSourceType(entry.sourceType ?? entry.type ?? entry.source),
+      id: typeof entry.id === 'string' ? entry.id : typeof entry.sourceId === 'string' ? entry.sourceId : undefined,
+      trait: trait || reason || '未说明的舍弃项',
+      reason,
+    }
+  }).filter((item) => item.trait)
+}
+
+function normalizeValidationNotes(value: unknown): AssistantValidationNote[] {
+  if (!Array.isArray(value)) return asStringArray(value).map((message) => ({ severity: 'info', message }))
+  return value.map((item) => {
+    if (typeof item === 'string') return { severity: 'info' as const, message: item }
+    const entry = item as Record<string, unknown>
+    const severityText = String(entry.severity ?? '').toLowerCase()
+    const typeText = String(entry.type ?? '').toLowerCase()
+    const severity: AssistantValidationSeverity = severityText === 'error' ? 'error' : severityText === 'warning' ? 'warning' : 'info'
+    const type = ['completeness', 'anti-template', 'compatibility', 'local-only', 'other'].includes(typeText)
+      ? typeText as AssistantValidationNote['type']
+      : 'other'
+    return {
+      type,
+      severity,
+      message: String(entry.message ?? entry.text ?? entry.note ?? '').trim(),
+    }
+  }).filter((item) => item.message)
+}
+
+function normalizeRewriteStages(value: unknown): AssistantRewriteStages | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const entry = value as Record<string, unknown>
+  const stages: AssistantRewriteStages = {
+    retrieval: asStringArray(entry.retrieval),
+    judgment: asStringArray(entry.judgment),
+    expression: asStringArray(entry.expression),
+    validation: asStringArray(entry.validation),
+  }
+  return Object.values(stages).some((items) => items?.length) ? stages : undefined
+}
+
+export function normalizeAssistantComposition(composition: ParsedAssistantComposition | null): ParsedAssistantComposition | null {
+  if (!composition) return null
+  return {
+    ...composition,
+    borrowedSources: normalizeBorrowedSources((composition as Record<string, unknown>).borrowedSources ?? (composition as Record<string, unknown>).borrowed),
+    rejectedTraits: normalizeRejectedTraits((composition as Record<string, unknown>).rejectedTraits ?? (composition as Record<string, unknown>).rejected),
+    validationNotes: normalizeValidationNotes((composition as Record<string, unknown>).validationNotes ?? (composition as Record<string, unknown>).validation),
+    rewriteStages: normalizeRewriteStages((composition as Record<string, unknown>).rewriteStages ?? (composition as Record<string, unknown>).stages),
+  }
+}
+
+function hasAnyText(text: string, values: string[]): boolean {
+  const normalized = text.toLowerCase()
+  return values.some((value) => normalized.includes(value.toLowerCase()))
+}
+
+export function validateFinalPromptText(prompt: string, visualIntent?: VisualIntent): string[] {
+  const text = prompt.trim()
+  if (!text) return []
+  const warnings: string[] = []
+  const maybeScene = ['场景', '背景', '环境', '室内', '户外', 'studio', 'scene', 'background', 'environment']
+  const maybeComposition = ['构图', '视角', '镜头', '特写', '近景', '中景', '全景', '俯视', '正面', '中央', '留白', 'composition', 'view', 'camera']
+  const maybeLighting = ['光线', '灯光', '布光', '柔光', '自然光', '逆光', '轮廓光', 'lighting', 'light', 'shadow']
+  const maybeVisual = ['色彩', '颜色', '材质', '质感', '风格', '调性', 'palette', 'color', 'material', 'texture', 'style']
+  const maybeNegative = ['避免', '不要', '禁止', '负面', '低清晰', '模糊', '变形', '错误文字', 'negative', 'avoid', 'no ']
+
+  if (!visualIntent?.subject && text.length < 24) warnings.push('提示词主体可能不够明确')
+  if (!hasAnyText(text, maybeScene)) warnings.push('提示词可能缺少场景或背景描述')
+  if (!hasAnyText(text, maybeComposition)) warnings.push('提示词可能缺少构图、视角或镜头描述')
+  if (!hasAnyText(text, maybeLighting)) warnings.push('提示词可能缺少光线描述')
+  if (!hasAnyText(text, maybeVisual)) warnings.push('提示词可能缺少色彩、材质或风格描述')
+  if (!hasAnyText(text, maybeNegative)) warnings.push('提示词可能缺少负面约束或失败模式控制')
+
+  if (/[{[【][^}\]】]*(主题|主体|subject)[^}\]】]*[}\]】]/i.test(text) || /{{[^}]+}}/.test(text)) {
+    warnings.push('提示词包含未替换的模板占位符')
+  }
+  if (/\b(template|style|rule|intent)-[a-z0-9-]+\b/i.test(text)) {
+    warnings.push('提示词疑似泄露内部模板、风格或规则 ID')
+  }
+  if (/@[a-z0-9_]{3,}/i.test(text) || /https?:\/\/|x\.com|twitter\.com/i.test(text)) {
+    warnings.push('提示词疑似包含来源署名、链接或平台痕迹')
+  }
+  const slotLabels = text.match(/(主体|场景|构图|光线|色彩|材质|风格|负面约束|质量约束)\s*[：:]/g) ?? []
+  if (slotLabels.length >= 5) warnings.push('提示词看起来过于像填槽模板，可考虑改写成更自然的画面描述')
+  const commaCount = (text.match(/[,，]/g) ?? []).length
+  if (commaCount >= 16 && !/[。.!?？]/.test(text)) warnings.push('提示词可能过度堆叠标签，缺少自然表达')
+
+  const isPromoIntent = visualIntent?.scenario === 'ecommerce-sale-poster' || visualIntent?.purpose === 'promotion' || hasAnyText(visualIntent?.subject ?? '', ['促销', '优惠', '大促'])
+  if (!isPromoIntent && hasAnyText(text, ['价格标签', '折扣', '优惠券', '限时促销', '满减', 'sale badge'])) {
+    warnings.push('非促销意图中出现促销价格或折扣元素')
+  }
+  const simplePosterOrProduct = visualIntent?.category === 'poster' || visualIntent?.category === 'product'
+  if (simplePosterOrProduct && visualIntent?.scenario !== 'workflow-explainer' && hasAnyText(text, ['多模块信息图', '流程步骤', '时间线', '百科栏目', 'Top 5模块'])) {
+    warnings.push('简单海报或产品图中出现信息图式多模块结构')
+  }
+
+  return uniqueStrings(warnings)
+}
+
 export function validateAssistantComposition(
   composition: ParsedAssistantComposition,
   options: { presetOnly?: boolean; visualIntent?: VisualIntent } = {},
@@ -2056,6 +2239,7 @@ export function validateAssistantComposition(
   if (options.visualIntent?.missingFields.length) {
     warnings.push(`Visual intent missing fields: ${options.visualIntent.missingFields.join(', ')}`)
   }
+  const promptWarnings = validateFinalPromptText(composition.finalPrompt ?? '', options.visualIntent)
 
   return {
     composition,
@@ -2064,7 +2248,8 @@ export function validateAssistantComposition(
     invalidTemplateIds: uniqueStrings(invalidTemplateIds),
     invalidStyleIds: uniqueStrings(invalidStyleIds),
     missingRequiredSlots: uniqueStrings(missingRequiredSlots),
-    warnings: uniqueStrings(warnings),
+    warnings: uniqueStrings([...warnings, ...promptWarnings]),
+    promptWarnings,
   }
 }
 

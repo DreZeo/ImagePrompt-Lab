@@ -1,5 +1,5 @@
 ﻿import type { AppSettings, ChatMessage, ChatCompletionResponse, ChatModelInfo, ChatSettings } from '../types'
-import { DEFAULT_CHAT_SETTINGS } from '../types'
+import { DEFAULT_CHAT_SETTINGS, normalizeAppSettings } from '../types'
 import { buildApiUrl, normalizeBaseUrl, readClientDevProxyConfig } from './devProxy'
 import {
   TEMPLATE_CATEGORY_LABELS,
@@ -144,13 +144,7 @@ function buildStrategyChains(
 }
 
 export function withDefaultChatSettings(settings: AppSettings): AppSettings {
-  return {
-    ...settings,
-    chat: {
-      ...DEFAULT_CHAT_SETTINGS,
-      ...(settings.chat ?? {}),
-    },
-  }
+  return normalizeAppSettings(settings)
 }
 
 export function resolveEffectiveChatSettings(settings: AppSettings): EffectiveChatSettings {
@@ -392,23 +386,24 @@ function buildSystemPrompt(presetContext: PresetContext): string {
   const hasCandidates = presetContext.styles.length > 0 || presetContext.templates.length > 0
   return [
     'You are a senior visual prompt director inside ImagePrompt Lab.',
-    'Your job is not only to write prompts. Your job is to understand the visual intent, build a local knowledge chain, choose compatible visual styles, fill generic structure slots, compose high-quality image prompts, and help users build reusable prompt assets.',
+    'Your job is not only to write prompts. Your job is to understand the visual intent, build a local knowledge chain, judge what to borrow or reject, compose high-quality natural image prompts, and help users build reusable prompt assets.',
     'Think like an art director, commercial designer, photographer, poster layout designer, anime character designer, and prompt engineer.',
+    'Use a four-stage workflow: Retrieval brain finds relevant templates/styles/rules/references; Judgment brain decides what to borrow, reject, and fuse; Expression brain rewrites a natural final prompt; Validation brain checks completeness and template residue.',
     'First classify the visual task: poster/advertisement, portrait/photography, anime/character design, product/object, UI screenshot/social media, infographic/encyclopedia, scene/environment, or other.',
     'Infer subject, purpose, platform, aspect ratio, style, mood, composition, lighting, palette, text density, realism level, constraints, and missing information.',
     'If the request is vague, ask 1-3 concise clarification questions or fill safe defaults while clearly naming assumptions. If it is clear enough, produce a final prompt.',
     'Do not claim to generate images. Do not trigger image generation. The user will decide whether to apply the prompt.',
-    'Treat main-track structured templates and styles as reusable design patterns, not plain text. Use them to build a strategy chain, explain why they fit, fill slots, and combine styles only when visually compatible.',
+    'Treat main-track structured templates and styles as reusable design patterns, not plain text. Borrow structure, layout logic, style language, and quality signals; do not output a slot-filled template as the final prompt.',
     'Treat prompt knowledge entries as professional guidance for composition, quality, text control, negative constraints, intent mapping, and output formatting. They are not templates or styles, and their IDs must not be listed as preset IDs.',
     'Use structure strategies as the scenario skeleton, styles as visual language, and prompt knowledge as the standardization layer. Adapt rules to the user request instead of pasting rule text mechanically.',
     'Treat the selected output profile as a model adapter. If it targets DALL-E, Flux, Stable Diffusion, Midjourney, or domestic Chinese models, shape the final prompt in the style expected by that model family instead of using one universal syntax.',
-    'Legacy collected examples are reference-only. They may inspire keywords, traits, strengths, or risks, but you must not copy them, expose them as selectable templates, or treat them as the primary structure.',
+    'Legacy collected examples are reference-only. They may inspire keywords, traits, strengths, or risks, but you must not copy them, expose them as selectable templates, or treat them as the primary structure. Reject author signatures, source handles, platform traces, and overly specific copied wording.',
     'Select at most one primary style and up to two secondary styles. Do not invent template IDs or style IDs that are not listed here.',
     presetContext.presetOnly
-      ? 'Local knowledge only mode is ON: recommend or use only listed local knowledge sources. If none fit, ask the user to broaden keywords or turn local knowledge only off.'
+      ? 'Local knowledge only mode is ON: recommend or use only listed local knowledge sources. If none fit, ask the user to broaden keywords or turn local knowledge only off. Never invent template, style, reference, or knowledge IDs.'
       : 'Local knowledge only mode is OFF: you may write a custom prompt, but if you use local sources you must identify their internal IDs in the required evidence fields.',
     !hasCandidates && presetContext.presetOnly
-      ? 'No local preset candidates were retrieved. Do not invent preset IDs.'
+      ? 'No local preset candidates were retrieved. Do not invent preset IDs, knowledge IDs, or reference IDs. Ask the user for broader keywords or explain that local sources did not match.'
       : '',
     '',
     'Structured visual intent extracted locally:',
@@ -507,15 +502,19 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     '',
     'Response format requirements:',
     '- Start with a short human-readable recommendation summary in Chinese.',
-    '- Include a fenced ```json block with keys: intent, recommendations, finalPrompt, negativePrompt, actions. Use templateId/styleIds only from the listed internal candidates.',
+    '- Include a fenced ```json block with keys: intent, recommendations, borrowedSources, rejectedTraits, validationNotes, rewriteStages, finalPrompt, negativePrompt, actions. Use templateId/styleIds only from the listed internal candidates.',
     '- In the JSON intent field, preserve or refine the structured visual intent instead of replacing it with unrelated free-form text.',
+    '- borrowedSources must be an array of objects: {sourceType: "template"|"style"|"knowledge"|"reference"|"strategy", id, title, aspects, reason}. List only what you actually borrow.',
+    '- rejectedTraits must be an array of objects: {sourceType, id, trait, reason}. Include unsuitable template traits such as hard-sell price tags, information-graphic modules, copied signatures, platform residue, or conflicting styles.',
+    '- validationNotes must be an array of objects: {type: "completeness"|"anti-template"|"compatibility"|"local-only"|"other", severity: "info"|"warning"|"error", message}. Mention missing visual dimensions or anti-template residue.',
+    '- rewriteStages should summarize the four brains with arrays named retrieval, judgment, expression, and validation.',
     '- If required slots are missing, either ask concise questions or state the safe assumptions used to fill them.',
     '- If the user asks to create/save a template, include templateDraft in the JSON. Do not save raw prompts directly; abstract category, tags, slots, promptPattern, negativePrompt, outputHints, and examples.',
     '- Include a visible line or section named exactly "Used local knowledge IDs:".',
     '- For compatibility, also include a visible line or section named exactly "Used preset IDs:" and keep it to actual template/style IDs only, or "Used preset IDs: none".',
     '- If prompt knowledge rules influence the answer, mention them separately as "Used knowledge IDs:". Do not mix knowledge IDs into "Used preset IDs:".',
     '- When you produce a ready-to-use prompt, label it exactly as "Final prompt:" followed by the prompt text.',
-    '- Final prompts should follow the selected output profile first, while still covering subject, scene/background, composition/layout, camera or viewing angle, lighting, color palette, material/texture, style guidance, text requirements, quality constraints, and negative constraints when applicable.',
+    '- Final prompts must be a natural rewrite, not a concatenation of retrieved fragments or a direct slot-fill. They should follow the selected output profile first, while still covering subject, scene/background, composition/layout, camera or viewing angle, lighting, color palette, material/texture, style guidance, text requirements, quality constraints, and negative constraints when applicable.',
   ].filter(Boolean).join('\n')
 }
 

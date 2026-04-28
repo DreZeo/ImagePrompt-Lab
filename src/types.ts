@@ -19,6 +19,17 @@ export interface AppSettings {
 }
 
 const DEFAULT_BASE_URL = import.meta.env.VITE_DEFAULT_API_URL?.trim() || 'https://api.openai.com'
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2'
+const DEFAULT_IMAGE_TIMEOUT = 300
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeTimeout(value: unknown, fallback: number): number {
+  const next = Number(value)
+  return Number.isFinite(next) && next > 0 ? next : fallback
+}
 
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   enabled: false,
@@ -30,11 +41,37 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   stream: false,
 }
 
+export function normalizeChatSettings(value: unknown): ChatSettings {
+  const chat = isPlainObject(value) ? value : {}
+
+  return {
+    enabled: Boolean(chat.enabled ?? DEFAULT_CHAT_SETTINGS.enabled),
+    useImageApiConfig: Boolean(chat.useImageApiConfig ?? DEFAULT_CHAT_SETTINGS.useImageApiConfig),
+    baseUrl: typeof chat.baseUrl === 'string' ? chat.baseUrl : DEFAULT_CHAT_SETTINGS.baseUrl,
+    apiKey: typeof chat.apiKey === 'string' ? chat.apiKey : DEFAULT_CHAT_SETTINGS.apiKey,
+    model: typeof chat.model === 'string' ? chat.model : DEFAULT_CHAT_SETTINGS.model,
+    timeout: normalizeTimeout(chat.timeout, DEFAULT_CHAT_SETTINGS.timeout),
+    stream: Boolean(chat.stream ?? DEFAULT_CHAT_SETTINGS.stream),
+  }
+}
+
+export function normalizeAppSettings(value: unknown): AppSettings {
+  const settings = isPlainObject(value) ? value : {}
+
+  return {
+    baseUrl: typeof settings.baseUrl === 'string' ? settings.baseUrl : DEFAULT_BASE_URL,
+    apiKey: typeof settings.apiKey === 'string' ? settings.apiKey : '',
+    model: typeof settings.model === 'string' ? settings.model : DEFAULT_IMAGE_MODEL,
+    timeout: normalizeTimeout(settings.timeout, DEFAULT_IMAGE_TIMEOUT),
+    chat: normalizeChatSettings(settings.chat),
+  }
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: DEFAULT_BASE_URL,
   apiKey: '',
-  model: 'gpt-image-2',
-  timeout: 300,
+  model: DEFAULT_IMAGE_MODEL,
+  timeout: DEFAULT_IMAGE_TIMEOUT,
   chat: { ...DEFAULT_CHAT_SETTINGS },
 }
 

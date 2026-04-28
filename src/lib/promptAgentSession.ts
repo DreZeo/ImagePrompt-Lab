@@ -2,6 +2,10 @@ import type { ChatMessage, ChatRole } from '../types'
 import type { PresetContext } from './chatApi'
 import type {
   AssistantCompositionValidation,
+  AssistantBorrowedSource,
+  AssistantRejectedTrait,
+  AssistantRewriteStages,
+  AssistantValidationNote,
   ParsedAssistantComposition,
   TemplateDraft,
 } from '../data/structuredPrompts'
@@ -17,6 +21,10 @@ export interface PromptAgentMessageArtifacts {
   templateDraft?: TemplateDraft | null
   draftStatus?: string | null
   knowledgeIds?: string[]
+  borrowedSources?: AssistantBorrowedSource[]
+  rejectedTraits?: AssistantRejectedTrait[]
+  validationNotes?: AssistantValidationNote[]
+  rewriteStages?: AssistantRewriteStages | null
 }
 
 export interface PromptAgentMessage {

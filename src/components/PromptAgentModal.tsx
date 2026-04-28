@@ -12,10 +12,12 @@ import {
 import {
   createTemplateDraftFromPrompt,
   extractAssistantFinalPrompt,
+  normalizeAssistantComposition,
   parseAssistantComposition,
   renderTemplatePrompt,
   saveUserTemplate,
   validateAssistantComposition,
+  validateFinalPromptText,
   validateTemplateDraft,
   type TemplateDraft,
 } from '../data/structuredPrompts'
@@ -58,26 +60,36 @@ function buildAssistantArtifacts(
   presetContext: PresetContext | null,
   presetOnly: boolean,
 ): PromptAgentMessageArtifacts {
-  const composition = parseAssistantComposition(content)
+  const composition = normalizeAssistantComposition(parseAssistantComposition(content))
   const validation = composition && presetContext
     ? validateAssistantComposition(composition, { presetOnly, visualIntent: presetContext.visualIntent })
     : null
+  const finalPrompt = extractFinalPrompt(content)
   const templateDraft = composition?.templateDraft && validateTemplateDraft(composition.templateDraft).valid
     ? composition.templateDraft
     : null
   const invalidIds = validation ? [...validation.invalidTemplateIds, ...validation.invalidStyleIds] : []
+  const promptWarnings = validation?.promptWarnings ?? validateFinalPromptText(finalPrompt, presetContext?.visualIntent)
+  const validationNotes = [
+    ...(composition?.validationNotes ?? []),
+    ...promptWarnings.map((message) => ({ type: 'anti-template' as const, severity: 'warning' as const, message })),
+  ]
   const knowledgeMatch = content.match(/Used knowledge IDs:\s*(.+)/i)
   const knowledgeIds = knowledgeMatch
     ? knowledgeMatch[1].split(/[,，;；\s]+/).map((id) => id.trim()).filter((id) => id && id.length > 1)
     : []
   return {
-    finalPrompt: extractFinalPrompt(content),
+    finalPrompt,
     presetContext,
     composition,
     validation,
     templateDraft,
     draftStatus: invalidIds.length ? `已忽略无效预设 ID：${invalidIds.join(', ')}` : null,
     knowledgeIds,
+    borrowedSources: composition?.borrowedSources ?? [],
+    rejectedTraits: composition?.rejectedTraits ?? [],
+    validationNotes,
+    rewriteStages: composition?.rewriteStages ?? null,
   }
 }
 
@@ -199,6 +211,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     if (!content || loading) return
 
     const session = activeSession ?? ensureSession()
+    const sessionPromptContext = session.messages.length === 0 ? '' : prompt
     setError(null)
     const userMessage = createPromptAgentMessage('user', content)
     const assistantMessage = createPromptAgentMessage('assistant', '', 'streaming')
@@ -214,7 +227,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     scrollToBottom()
 
     try {
-      const result = await callPromptAgent(effectiveSettings, contextMessages, content, presetOnly, prompt, effectiveSettings.stream
+      const result = await callPromptAgent(effectiveSettings, contextMessages, content, presetOnly, sessionPromptContext, effectiveSettings.stream
         ? (_delta, fullText) => {
           updateMessage(session.id, assistantMessage.id, { content: fullText, status: 'streaming' })
           scrollToBottom()
@@ -387,12 +400,71 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
     )
   }
 
+  const renderEvidencePanel = (message: PromptAgentMessage) => {
+    const artifacts = message.artifacts
+    const borrowed = artifacts?.borrowedSources ?? artifacts?.composition?.borrowedSources ?? []
+    const rejected = artifacts?.rejectedTraits ?? artifacts?.composition?.rejectedTraits ?? []
+    const notes = artifacts?.validationNotes ?? artifacts?.composition?.validationNotes ?? []
+    if (!borrowed.length && !rejected.length && !notes.length) return null
+
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
+        <div className="mb-2 font-semibold text-slate-700 dark:text-slate-100">创作依据</div>
+        {borrowed.length ? (
+          <div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-emerald-600/80 dark:text-emerald-300/80">借鉴</div>
+            <div className="space-y-1.5">
+              {borrowed.slice(0, 4).map((item, index) => (
+                <div key={`${item.id ?? item.title ?? 'borrowed'}-${index}`} className="rounded-xl bg-white/80 px-2 py-1.5 dark:bg-black/20">
+                  <span className="font-medium">{item.title || item.id || item.sourceType || '本地知识'}</span>
+                  <span className="text-slate-400"> · {item.aspects.slice(0, 3).map((aspect) => shortText(aspect, 42)).join('、')}</span>
+                  {item.reason ? <span className="text-slate-400"> · {shortText(item.reason, 64)}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {rejected.length ? (
+          <div className={borrowed.length ? 'mt-3' : ''}>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-rose-600/80 dark:text-rose-300/80">舍弃</div>
+            <div className="flex flex-wrap gap-1">
+              {rejected.slice(0, 8).map((item, index) => (
+                <span key={`${item.id ?? item.trait}-${index}`} className="rounded-full bg-rose-500/10 px-2 py-0.5 text-rose-600 dark:text-rose-300" title={item.reason ?? item.id ?? ''}>
+                  {shortText(item.trait, 32)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {notes.length ? (
+          <div className={borrowed.length || rejected.length ? 'mt-3' : ''}>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-amber-600/80 dark:text-amber-300/80">校验</div>
+            <div className="space-y-1">
+              {notes.slice(0, 5).map((note, index) => (
+                <div key={`${note.message}-${index}`} className={`rounded-xl px-2 py-1.5 ${
+                  note.severity === 'error'
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-300'
+                    : note.severity === 'warning'
+                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-200'
+                      : 'bg-white/80 text-slate-500 dark:bg-black/20 dark:text-slate-300'
+                }`}>
+                  {note.message}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   const renderAssistantArtifacts = (message: PromptAgentMessage) => {
     const artifacts = message.artifacts
     const finalPrompt = artifacts?.finalPrompt || extractFinalPrompt(message.content)
-    const composition = artifacts?.composition ?? parseAssistantComposition(message.content)
+    const composition = artifacts?.composition ?? normalizeAssistantComposition(parseAssistantComposition(message.content))
     const validation = artifacts?.validation
     const templateDraft = artifacts?.templateDraft
+    const validationNotes = artifacts?.validationNotes ?? composition?.validationNotes ?? []
     const isExpanded = expandedArtifacts[message.id] ?? selectedMessageId === message.id
 
     if (!finalPrompt && !composition?.recommendations?.length && !templateDraft && !artifacts?.presetContext) return null
@@ -416,6 +488,13 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
               <div className="rounded-2xl bg-white/75 p-3 text-xs text-gray-600 ring-1 ring-gray-200/70 dark:bg-black/20 dark:text-gray-300 dark:ring-white/[0.06]">
                 <div className="mb-2 font-semibold text-gray-700 dark:text-gray-100">Final prompt</div>
                 <div className="max-h-40 overflow-auto whitespace-pre-wrap leading-relaxed">{finalPrompt}</div>
+                {validationNotes.length ? (
+                  <div className="mt-3 space-y-1 rounded-xl bg-amber-50/80 p-2 text-[11px] text-amber-700 ring-1 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/20">
+                    {validationNotes.slice(0, 4).map((note, index) => (
+                      <div key={`${note.message}-${index}`}>{note.message}</div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button onClick={(event) => { event.stopPropagation(); onApplyPrompt(appendToPrompt(prompt, finalPrompt)) }} className="rounded-xl bg-gray-100 px-3 py-2 text-xs text-gray-600 hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]">插入</button>
                   <button onClick={(event) => { event.stopPropagation(); onApplyPrompt(finalPrompt) }} className="rounded-xl bg-blue-500 px-3 py-2 text-xs text-white hover:bg-blue-600">替换</button>
@@ -437,6 +516,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                 ) : null}
               </div>
             ) : null}
+            {renderEvidencePanel(message)}
             {renderPresetContext(message)}
             {templateDraft && (
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-100">
@@ -552,9 +632,16 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
             const isSelected = selectedMessageId === message.id
             return (
               <div key={message.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedMessageId((value) => value === message.id ? null : message.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedMessageId((value) => value === message.id ? null : message.id)
+                    }
+                  }}
                   className={`max-w-[94%] rounded-2xl px-3 py-2 text-left text-sm leading-relaxed outline-none transition focus:ring-2 focus:ring-blue-500/30 ${
                     isUser
                       ? 'bg-blue-500 text-white whitespace-pre-wrap'
@@ -571,7 +658,7 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
                     message.content
                   )}
                   {message.role === 'assistant' && renderAssistantArtifacts(message)}
-                </button>
+                </div>
                 {renderMessageActions(message)}
               </div>
             )
