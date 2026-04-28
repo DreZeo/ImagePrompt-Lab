@@ -226,7 +226,7 @@ const TEMPLATE_SCENARIO_ALIASES: Record<PromptTemplateScenario, string[]> = {
   'saas-landing-hero': ['SaaS', '官网', '落地页', 'landing page', 'hero', '首页首屏', '产品首页'],
   'analytics-dashboard': ['dashboard', '仪表盘', '数据看板', '后台', '管理台', 'BI', '图表界面', 'analytics'],
   'food-drink-photo': ['美食', '食物', '饮品', '咖啡', '甜品', '餐饮', '奶茶', 'food', 'drink'],
-  'tech-product-render': ['科技产品', '硬件', '耳机', '手机', '机器人', '设备', '3C', 'render', '渲染'],
+  'tech-product-render': ['科技产品', '硬件', '耳机', '无线耳机', 'earbud', 'earbuds', '手机', '机器人', '设备', '3C', 'render', '渲染'],
   'packaging-display': ['包装', '盒子', '瓶身', '标签', '礼盒', '包装设计', '包装展示'],
   'interior-architecture': ['室内', '建筑', '空间', '家居', '展厅', '办公室', '民宿', 'interior', 'architecture'],
   'workflow-explainer': ['流程图', '工作流', '步骤', '解释图', '教程', '方法论', '对比图', 'process', 'workflow'],
@@ -1575,69 +1575,90 @@ function textHasAny(text: string, terms: string[]): boolean {
   return terms.some((term) => normalized.includes(term.toLowerCase()))
 }
 
+function countMatches(text: string, terms: string[]): number {
+  const normalized = text.toLowerCase()
+  return terms.reduce((count, term) => count + (normalized.includes(term.toLowerCase()) ? 1 : 0), 0)
+}
+
 function inferCategoryFromText(text: string): PromptTemplateCategory | undefined {
   const categoryTerms: Array<[PromptTemplateCategory, string[]]> = [
-    ['ui-screenshot', ['ui', 'app', 'web', 'screenshot', 'mockup']],
-    ['infographic', ['infographic', 'diagram', 'knowledge', 'flowchart']],
-    ['anime', ['anime', 'manga', 'character', 'comic']],
-    ['portrait', ['portrait', 'avatar', 'photo', 'headshot']],
-    ['product', ['product', 'ecommerce', 'perfume', 'package', 'object']],
-    ['poster', ['poster', 'cover', 'ad', 'campaign', 'xiaohongshu', 'rednote']],
-    ['scene', ['scene', 'space', 'interior', 'architecture', 'environment']],
+    ['ui-screenshot', ['ui', 'app', 'web', 'screenshot', 'mockup', '界面', '截图', '后台', '仪表盘', '管理台', '首页', '落地页', 'dashboard', 'hud']],
+    ['infographic', ['infographic', 'diagram', 'knowledge', 'flowchart', '信息图', '流程图', '时间线', '科普', '知识卡片', '教程图']],
+    ['anime', ['anime', 'manga', 'character', 'comic', '二次元', '动漫', '角色', '立绘', '漫画', '卡牌']],
+    ['portrait', ['portrait', 'avatar', 'photo', 'headshot', '人像', '头像', '写真', '形象照', '模特', '穿搭']],
+    ['poster', ['poster', 'cover', 'ad', 'campaign', 'xiaohongshu', 'rednote', '海报', '封面', '广告', '主视觉', 'kv', '种草']],
+    ['scene', ['scene', 'space', 'interior', 'architecture', 'environment', '场景', '空间', '室内', '建筑', '环境', '客厅', '展厅', '办公室']],
+    ['product', ['product', 'ecommerce', 'perfume', 'package', 'object', '产品', '商品', '电商', '包装', '耳机', '无线耳机', 'earbud', 'earbuds', '手机', '硬件', '饮品', '食物', '咖啡']],
   ]
-  return categoryTerms.find(([, terms]) => textHasAny(text, terms))?.[0]
+  return categoryTerms
+    .map(([category, terms], index) => ({ category, index, score: countMatches(text, terms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.category
 }
 
 function inferPurpose(text: string): string | undefined {
   const purposeTerms: Array<[string, string[]]> = [
-    ['social-seeding', ['xiaohongshu', 'rednote', 'social', 'seeding', 'post']],
-    ['ecommerce', ['ecommerce', 'taobao', 'detail', 'product page']],
-    ['brand-promotion', ['brand', 'campaign', 'advertising', 'launch', 'promotion']],
-    ['avatar', ['avatar', 'profile', 'headshot']],
-    ['wallpaper', ['wallpaper']],
-    ['education', ['education', 'infographic', 'tutorial', 'diagram']],
+    ['social-seeding', ['xiaohongshu', 'rednote', 'social', 'seeding', 'post', '小红书', '种草', '笔记', '封面', '直播封面', '朋友圈']],
+    ['ecommerce', ['ecommerce', 'taobao', 'detail', 'product page', '电商', '淘宝', '天猫', '京东', '详情页', '卖点图', '商品卡']],
+    ['brand-promotion', ['brand', 'campaign', 'advertising', 'launch', 'promotion', '品牌', '宣传', '推广', '发布', '上新', '主视觉']],
+    ['avatar', ['avatar', 'profile', 'headshot', '头像', '职业照', '证件照', '形象照']],
+    ['wallpaper', ['wallpaper', '壁纸']],
+    ['education', ['education', 'infographic', 'tutorial', 'diagram', '教程', '科普', '讲解', '流程图', '知识卡']],
   ]
-  return purposeTerms.find(([, terms]) => textHasAny(text, terms))?.[0]
+  return purposeTerms
+    .map(([purpose, terms], index) => ({ purpose, index, score: countMatches(text, terms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.purpose
 }
 
 function inferPlatform(text: string): string | undefined {
   const platformTerms: Array<[string, string[]]> = [
-    ['xiaohongshu', ['xiaohongshu', 'rednote']],
-    ['douyin', ['douyin', 'tiktok']],
-    ['taobao', ['taobao', 'tmall', 'ecommerce']],
-    ['wechat', ['wechat']],
+    ['xiaohongshu', ['xiaohongshu', 'rednote', '小红书']],
+    ['douyin', ['douyin', 'tiktok', '抖音']],
+    ['taobao', ['taobao', 'tmall', 'ecommerce', '淘宝', '天猫']],
+    ['jd', ['jd', '京东']],
+    ['wechat', ['wechat', '微信', '公众号']],
     ['instagram', ['instagram', 'ins']],
+    ['bilibili', ['bilibili', 'b站']],
+    ['steam', ['steam']],
+    ['appstore', ['app store', 'appstore']],
   ]
-  return platformTerms.find(([, terms]) => textHasAny(text, terms))?.[0]
+  return platformTerms
+    .map(([platform, terms], index) => ({ platform, index, score: countMatches(text, terms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.platform
 }
 
 function inferSubjectType(text: string, category?: PromptTemplateCategory): string | undefined {
-  if (textHasAny(text, ['perfume', 'product', 'package', 'coffee', 'drink', 'skincare', 'robot'])) return 'product'
-  if (textHasAny(text, ['person', 'portrait', 'avatar', 'character'])) return 'person'
-  if (textHasAny(text, ['app', 'ui', 'web', 'screenshot', 'homepage'])) return 'interface'
-  if (textHasAny(text, ['architecture', 'interior', 'space', 'scene', 'landscape'])) return 'scene'
+  if (textHasAny(text, ['perfume', 'product', 'package', 'coffee', 'drink', 'skincare', 'robot', '商品', '产品', '耳机', '手机', '包装'])) return 'product'
+  if (textHasAny(text, ['food', 'dish', 'dessert', 'beverage', '美食', '菜品', '甜品', '饮品'])) return 'food'
+  if (textHasAny(text, ['fashion', 'outfit', 'lookbook', '穿搭', '时尚', '服装'])) return 'fashion'
+  if (textHasAny(text, ['person', 'portrait', 'avatar', 'character', '人像', '头像', '模特', '角色'])) return 'person'
+  if (textHasAny(text, ['app', 'ui', 'web', 'screenshot', 'homepage', '界面', '截图', 'dashboard', 'hud', '后台'])) return 'interface'
+  if (textHasAny(text, ['architecture', 'interior', 'space', 'scene', 'landscape', '建筑', '室内', '空间', '环境'])) return 'scene'
   return category
 }
 
 function inferTextDensity(text: string): TemplateTextDensity | undefined {
-  if (textHasAny(text, ['no text', 'without text'])) return 'none'
-  if (textHasAny(text, ['lots of text', 'long copy', 'detailed explanation'])) return 'high'
-  if (textHasAny(text, ['title', 'copy', 'text', 'logo', 'slogan'])) return 'low'
+  if (textHasAny(text, ['no text', 'without text', '无字', '不要文字', '无文案'])) return 'none'
+  if (textHasAny(text, ['lots of text', 'long copy', 'detailed explanation', '大量文字', '长文案', '信息密度高'])) return 'high'
+  if (textHasAny(text, ['title', 'copy', 'text', 'logo', 'slogan', '标题', '文案', '文字', '口号', '标签'])) return 'low'
   return undefined
 }
 
 function inferAspectRatio(text: string): string | undefined {
   const explicit = text.match(/(?:\b|[:])([1-9]\d?\s*[:]\s*[1-9]\d?)(?:\b|[^\d])/)
   if (explicit) return explicit[1].replace(/\s+/g, '')
-  if (textHasAny(text, ['vertical', 'mobile', 'poster'])) return '3:4'
-  if (textHasAny(text, ['horizontal', 'banner', 'cover'])) return '16:9'
-  if (textHasAny(text, ['avatar', 'square'])) return '1:1'
+  if (textHasAny(text, ['vertical', 'mobile', 'poster', '竖版', '手机竖屏'])) return '3:4'
+  if (textHasAny(text, ['horizontal', 'banner', 'cover', '横版', '宽屏'])) return '16:9'
+  if (textHasAny(text, ['avatar', 'square', '方图', '头像方形'])) return '1:1'
   return undefined
 }
 
 function inferSubject(text: string): string | undefined {
   const cleaned = text
     .replace(/^(please|create|generate|make|design|draw|help me)+/i, '')
+    .replace(/^(帮我|请帮我|请|生成|做一张|设计一张|画一张|来一张)+/i, '')
     .replace(/(image|picture|poster|prompt)$/i, '')
     .trim()
   if (!cleaned) return undefined
@@ -1645,57 +1666,126 @@ function inferSubject(text: string): string | undefined {
 }
 
 function inferStyleHints(text: string): string[] {
-  const hints = ['premium', 'black gold', 'minimal', 'realistic', 'cinematic', 'cyberpunk', 'pixel', 'watercolor', 'anime', 'cute', 'retro', 'commercial', '3d', 'flat', 'hand drawn']
-  return hints.filter((hint) => textHasAny(text, [hint]))
+  const hintTerms: Array<[string, string[]]> = [
+    ['premium', ['premium', '高级感', '高端', '奢华']],
+    ['black gold', ['black gold', '黑金']],
+    ['minimal', ['minimal', '极简', '简约']],
+    ['realistic', ['realistic', '写实', '真实摄影', '逼真']],
+    ['cinematic', ['cinematic', '电影感', '电影级']],
+    ['cyberpunk', ['cyberpunk', '赛博朋克']],
+    ['pixel', ['pixel', '像素风']],
+    ['watercolor', ['watercolor', '水彩']],
+    ['anime', ['anime', '动漫', '二次元']],
+    ['cute', ['cute', '可爱']],
+    ['retro', ['retro', '复古']],
+    ['commercial', ['commercial', '商业', '广告感']],
+    ['3d', ['3d', '三维', '渲染']],
+    ['flat', ['flat', '扁平']],
+    ['hand drawn', ['hand drawn', '手绘']],
+    ['fashion', ['fashion', '时尚', 'editorial', 'lookbook']],
+    ['tech', ['tech', '科技感', '未来感']],
+  ]
+  return hintTerms.filter(([, terms]) => textHasAny(text, terms)).map(([label]) => label)
 }
 
 function inferPalette(text: string): string | undefined {
-  const palettes = ['black gold', 'blue', 'red', 'pink', 'green', 'white', 'cream', 'neon', 'low saturation', 'high saturation']
-  return palettes.find((palette) => textHasAny(text, [palette]))
+  const palettes: Array<[string, string[]]> = [
+    ['black gold', ['black gold', '黑金']],
+    ['blue', ['blue', '蓝色']],
+    ['red', ['red', '红色']],
+    ['pink', ['pink', '粉色']],
+    ['green', ['green', '绿色']],
+    ['white', ['white', '白色']],
+    ['cream', ['cream', '奶油色', '米白']],
+    ['neon', ['neon', '霓虹']],
+    ['low saturation', ['low saturation', '低饱和']],
+    ['high saturation', ['high saturation', '高饱和']],
+  ]
+  return palettes.find(([, terms]) => textHasAny(text, terms))?.[0]
 }
 
 function inferMood(text: string): string | undefined {
-  const moods = ['premium', 'warm', 'fresh', 'luxury', 'cute', 'cool', 'mysterious', 'clean', 'playful', 'professional', 'tech']
-  return moods.filter((mood) => textHasAny(text, [mood])).join(', ') || undefined
+  const moods: Array<[string, string[]]> = [
+    ['premium', ['premium', '高级']],
+    ['warm', ['warm', '温暖']],
+    ['fresh', ['fresh', '清新']],
+    ['luxury', ['luxury', '奢华']],
+    ['cute', ['cute', '可爱']],
+    ['cool', ['cool', '冷酷']],
+    ['mysterious', ['mysterious', '神秘']],
+    ['clean', ['clean', '干净']],
+    ['playful', ['playful', '俏皮']],
+    ['professional', ['professional', '专业']],
+    ['tech', ['tech', '科技感']],
+  ]
+  return moods.filter(([, terms]) => textHasAny(text, terms)).map(([label]) => label).join(', ') || undefined
 }
 
 function inferRealism(text: string): VisualIntent['realism'] | undefined {
-  if (textHasAny(text, ['realistic', 'photo', 'photography', 'shot'])) return 'high'
-  if (textHasAny(text, ['flat', 'illustration', 'anime', 'cartoon'])) return 'low'
+  if (textHasAny(text, ['realistic', 'photo', 'photography', 'shot', '写实', '摄影', '实拍'])) return 'high'
+  if (textHasAny(text, ['flat', 'illustration', 'anime', 'cartoon', '插画', '动漫', '卡通', '扁平'])) return 'low'
   return undefined
 }
 
 function inferScenarioFromText(text: string): PromptTemplateScenario | undefined {
-  return (Object.entries(TEMPLATE_SCENARIO_ALIASES) as Array<[PromptTemplateScenario, string[]]>).find(([, aliases]) => textHasAny(text, aliases))?.[0]
+  return (Object.entries(TEMPLATE_SCENARIO_ALIASES) as Array<[PromptTemplateScenario, string[]]>)
+    .map(([scenario, aliases], index) => ({ scenario, index, score: countMatches(text, aliases) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.scenario
+}
+
+function inferCategoryFromScenario(scenario?: PromptTemplateScenario): PromptTemplateCategory | undefined {
+  if (!scenario) return undefined
+  if (['brand-key-visual', 'ecommerce-sale-poster', 'event-release-poster', 'social-campaign-cover'].includes(scenario)) return 'poster'
+  if (['saas-landing-hero', 'analytics-dashboard'].includes(scenario)) return 'ui-screenshot'
+  if (['food-drink-photo', 'tech-product-render', 'packaging-display'].includes(scenario)) return 'product'
+  if (scenario === 'interior-architecture') return 'scene'
+  if (scenario === 'workflow-explainer') return 'infographic'
+  return undefined
 }
 
 export function extractVisualIntent(query: string): VisualIntent {
   const text = query.trim()
-  const category = inferCategoryFromText(text)
   const scenario = inferScenarioFromText(text)
+  const category = inferCategoryFromText(text) ?? inferCategoryFromScenario(scenario)
   const textDensity = inferTextDensity(text)
   const subject = inferSubject(text)
-  const confidenceSignals = [subject, category, scenario, inferPurpose(text), inferPlatform(text), textDensity, inferPalette(text), inferMood(text), inferAspectRatio(text)].filter(Boolean).length
+  const purpose = inferPurpose(text)
+  const platform = inferPlatform(text)
+  const styleHints = inferStyleHints(text)
+  const mood = inferMood(text)
+  const palette = inferPalette(text)
+  const aspectRatio = inferAspectRatio(text)
+  const realism = inferRealism(text)
+  const needsPurpose = textHasAny(text, ['海报', '封面', '主图', '详情页', '界面', '空间', '美食', '穿搭', 'dashboard', 'render'])
+  const needsPlatform = textHasAny(text, ['小红书', 'rednote', '抖音', 'douyin', '淘宝', '天猫', '京东', 'b站', 'steam', 'app store'])
+  const confidenceSignals = [subject, category, scenario, purpose, platform, textDensity, palette, mood, aspectRatio, realism, styleHints.length ? 'style' : undefined].filter(Boolean).length
   return {
     subject,
     category,
     scenario,
     scenarioLabel: scenario ? TEMPLATE_SCENARIO_LABELS[scenario] : undefined,
-    purpose: inferPurpose(text),
-    platform: inferPlatform(text),
-    styleHints: inferStyleHints(text),
-    mood: inferMood(text),
-    palette: inferPalette(text),
-    aspectRatio: inferAspectRatio(text),
-    realism: inferRealism(text),
+    purpose,
+    platform,
+    styleHints,
+    mood,
+    palette,
+    aspectRatio,
+    realism,
     text: {
       required: textDensity ? textDensity !== 'none' : undefined,
       density: textDensity,
     },
     constraints: textHasAny(text, ['避免', '不要', '禁止']) ? [text] : [],
     negativeHints: textHasAny(text, ['避免', '不要', '禁止']) ? extractSearchKeywords(text).slice(0, 8) : [],
-    missingFields: uniqueStrings([subject ? undefined : 'subject', category ? undefined : 'category']),
-    confidence: Math.min(0.95, Math.max(0.25, confidenceSignals / 9)),
+    missingFields: uniqueStrings([
+      subject ? undefined : 'subject',
+      category ? undefined : 'category',
+      needsPurpose && !purpose ? 'purpose' : undefined,
+      needsPlatform && !platform ? 'platform' : undefined,
+      (category === 'poster' || category === 'ui-screenshot' || scenario === 'workflow-explainer') && !textDensity ? 'text-density' : undefined,
+    ]),
+    confidence: Math.min(0.95, Math.max(0.2, confidenceSignals / 11)),
   }
 }
 

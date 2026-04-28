@@ -109,6 +109,7 @@ function buildStrategyChains(
     const qualityKeywords = uniqueValues([
       ...rules.flatMap((entry) => entry.item.positiveFragments.slice(0, 2)),
       knowledge.outputProfile.name,
+      ...knowledge.outputProfile.tags.slice(0, 2),
     ]).slice(0, 8)
     const negativeKeywords = uniqueValues([
       template.negativePrompt,
@@ -380,6 +381,7 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     'Treat main-track structured templates and styles as reusable design patterns, not plain text. Use them to build a strategy chain, explain why they fit, fill slots, and combine styles only when visually compatible.',
     'Treat prompt knowledge entries as professional guidance for composition, quality, text control, negative constraints, intent mapping, and output formatting. They are not templates or styles, and their IDs must not be listed as preset IDs.',
     'Use structure strategies as the scenario skeleton, styles as visual language, and prompt knowledge as the standardization layer. Adapt rules to the user request instead of pasting rule text mechanically.',
+    'Treat the selected output profile as a model adapter. If it targets DALL-E, Flux, Stable Diffusion, Midjourney, or domestic Chinese models, shape the final prompt in the style expected by that model family instead of using one universal syntax.',
     'Legacy collected examples are reference-only. They may inspire keywords, traits, strengths, or risks, but you must not copy them, expose them as selectable templates, or treat them as the primary structure.',
     'Select at most one primary style and up to two secondary styles. Do not invent template IDs or style IDs that are not listed here.',
     presetContext.presetOnly
@@ -477,6 +479,8 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     'Output profile guidance:',
     `- ${presetContext.knowledge.outputProfile.id}: ${presetContext.knowledge.outputProfile.name}`,
     `  Language: ${presetContext.knowledge.outputProfile.language}`,
+    `  Description: ${presetContext.knowledge.outputProfile.description}`,
+    `  Tags: ${presetContext.knowledge.outputProfile.tags.join(', ')}`,
     `  Required sections: ${presetContext.knowledge.outputProfile.requiredSections.join(', ')}`,
     `  Format guidance: ${presetContext.knowledge.outputProfile.formatGuidance.join('；')}`,
     `  Avoid: ${presetContext.knowledge.outputProfile.avoid.join('；')}`,
@@ -491,7 +495,7 @@ function buildSystemPrompt(presetContext: PresetContext): string {
     '- For compatibility, also include a visible line or section named exactly "Used preset IDs:" and keep it to actual template/style IDs only, or "Used preset IDs: none".',
     '- If prompt knowledge rules influence the answer, mention them separately as "Used knowledge IDs:". Do not mix knowledge IDs into "Used preset IDs:".',
     '- When you produce a ready-to-use prompt, label it exactly as "Final prompt:" followed by the prompt text.',
-    '- Final prompts should include subject, scene/background, composition/layout, camera or viewing angle, lighting, color palette, material/texture, style guidance, text requirements, quality constraints, and negative constraints when applicable.',
+    '- Final prompts should follow the selected output profile first, while still covering subject, scene/background, composition/layout, camera or viewing angle, lighting, color palette, material/texture, style guidance, text requirements, quality constraints, and negative constraints when applicable.',
   ].filter(Boolean).join('\n')
 }
 

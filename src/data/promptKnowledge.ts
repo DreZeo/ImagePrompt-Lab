@@ -110,6 +110,48 @@ export const PROMPT_OUTPUT_PROFILES: PromptOutputProfile[] = [
     requiredSections: ['positive prompt', 'negative prompt', 'quality descriptors', 'composition', 'lighting', 'style'],
     avoid: ['Do not overload with repetitive quality tags', 'Do not use conflicting style tags'],
   },
+  {
+    id: 'dalle-natural-zh',
+    name: 'DALL-E 自然语言提示词',
+    language: 'zh-CN',
+    description: '适合 DALL-E / OpenAI Images 一类模型的自然语言式提示词，强调清晰关系、完整画面描述和少量高价值约束。',
+    tags: ['DALL-E', 'OpenAI Images', '中文', '自然语言', '场景叙事'],
+    formatGuidance: [
+      '使用完整自然语言描述主体、环境、构图关系和关键视觉目标。',
+      '优先强调画面中谁在什么场景、以什么方式被看到，而不是堆叠短标签。',
+      '避免权重语法、参数符号和过长的负面词串。',
+    ],
+    requiredSections: ['主体', '场景关系', '构图/视角', '光线', '色彩', '材质', '风格目标', '关键约束'],
+    avoid: ['不要堆叠逗号式碎片标签', '不要默认加入 MJ/SD 参数', '不要使用过长负面词列表替代清晰正向描述'],
+  },
+  {
+    id: 'flux-descriptive-en',
+    name: 'Flux 描述型提示词',
+    language: 'en-US',
+    description: '适合 Flux 一类模型的描述型英文提示词，强调摄影、材质、空间关系和一致的视觉语气。',
+    tags: ['Flux', 'English', 'descriptive', 'photography', 'material'],
+    formatGuidance: [
+      'Write fluent descriptive English with coherent subject, environment, lighting, and material cues.',
+      'Keep the most important scene, composition, and realism signals near the front.',
+      'Use negative constraints sparingly and focus on visible failure modes.',
+    ],
+    requiredSections: ['subject', 'scene', 'composition/view', 'lighting', 'material detail', 'style direction', 'quality constraints'],
+    avoid: ['Do not turn the prompt into MJ-style parameter chains', 'Do not repeat the same quality adjectives excessively', 'Do not mix too many incompatible render styles'],
+  },
+  {
+    id: 'domestic-zh-concise',
+    name: '国产模型中文短句提示词',
+    language: 'zh-CN',
+    description: '适合即梦、可灵、通义万相、豆包等中文模型的短句式提示词，强调主体明确、结构清楚、语义少冲突。',
+    tags: ['国产模型', '中文', '短句', '即梦', '可灵', '通义万相', '豆包'],
+    formatGuidance: [
+      '使用短句或短分句描述主体、场景、构图、光线、色彩和风格，层次清晰。',
+      '优先给出单一主视觉和少量强约束，避免长串英文混写。',
+      '如涉及文字或界面，明确要求少量可读中文占位。',
+    ],
+    requiredSections: ['主体', '场景', '构图', '光线', '色彩', '风格', '质量约束', '负面约束'],
+    avoid: ['不要中英夹杂过长', '不要同时堆叠过多风格标签', '不要把复杂参数语法直接套入中文模型'],
+  },
 ]
 
 export const PROMPT_KNOWLEDGE_RULES: PromptKnowledgeRule[] = [
@@ -218,6 +260,76 @@ export const PROMPT_KNOWLEDGE_RULES: PromptKnowledgeRule[] = [
     examples: ['小户型客厅设计', '咖啡店室内效果图', '建筑外观概念图'],
   },
   {
+    id: 'rule-food-drink-photography',
+    type: 'rule',
+    name: '食品饮品摄影规则',
+    description: '用于美食摆盘、饮品海报、菜单图、餐饮社媒和商业食物摄影的食欲感与新鲜度控制。',
+    appliesTo: ['product', 'scene', 'poster'],
+    tags: ['美食', '食物', '饮品', '茶饮', '咖啡', '甜品', '餐饮', '菜单', 'food', 'drink', 'plating'],
+    aliases: ['美食摄影', '饮品摄影', '茶饮摄影', '菜品拍摄', '餐饮拍摄', 'food photography'],
+    dimensions: ['主体新鲜诱人', '摆盘和配角服务主菜', '蒸汽/冷凝/高光可信', '餐具背景不抢主体', '色泽与质地真实'],
+    positiveFragments: ['食欲感强', '新鲜质地清晰', '自然食物高光', '摆盘精致', '餐饮商业摄影质感', '背景和道具克制服务主体'],
+    negativeFragments: ['食物塌陷', '颜色发灰', '摆盘凌乱', '油腻脏污', '餐具比例错误', '低清晰度'],
+    examples: ['精品咖啡海报', '甜品社媒封面', '餐厅菜单主视觉'],
+    outputProfileIds: ['universal-zh', 'dalle-natural-zh', 'flux-descriptive-en', 'domestic-zh-concise'],
+  },
+  {
+    id: 'rule-architecture-interior-visualization',
+    type: 'rule',
+    name: '建筑室内可视化规则',
+    description: '用于室内设计、建筑空间、展厅、办公室和零售场景的空间可信度与材质表达。',
+    appliesTo: ['scene'],
+    tags: ['室内', '建筑', '空间', '家居', '办公室', '展厅', '零售', 'architecture', 'interior', 'render'],
+    aliases: ['建筑可视化', '室内效果图', '空间设计', 'interior render', 'architecture visualization'],
+    dimensions: ['透视和垂直线可信', '空间尺度合理', '材质统一', '动线清楚', '自然光与人工光逻辑完整'],
+    positiveFragments: ['真实空间尺度', '垂直线控制准确', '材质细节统一', '自然采光与环境光协调', '空间层次清晰', '建筑摄影级构图'],
+    negativeFragments: ['透视畸变', '尺度错误', '家具漂浮', '材质混乱', '灯光逻辑错误', '低清晰度'],
+    examples: ['精品咖啡店空间图', 'SaaS 办公室效果图', '家居样板间渲染'],
+    outputProfileIds: ['universal-zh', 'dalle-natural-zh', 'flux-descriptive-en'],
+  },
+  {
+    id: 'rule-fashion-styling-direction',
+    type: 'rule',
+    name: '时尚穿搭造型规则',
+    description: '用于穿搭封面、时尚大片、lookbook、模特街拍和服饰内容的造型完整性与服装表达。',
+    appliesTo: ['portrait', 'poster'],
+    tags: ['穿搭', '时尚', '服装', '模特', 'lookbook', '街拍', 'style', 'fashion', 'editorial'],
+    aliases: ['穿搭图', '时尚大片', '服装拍摄', 'lookbook', 'fashion styling'],
+    dimensions: ['服装轮廓清晰', '搭配逻辑成立', '姿态自然有张力', '材质层次可辨', '背景不削弱造型主体'],
+    positiveFragments: ['服装廓形明确', '层次搭配清楚', '时尚编辑感', '姿态自然有张力', '面料质感清晰', '整体造型统一'],
+    negativeFragments: ['服装变形', '搭配冲突', '姿态僵硬', '面料糊成一片', '配饰杂乱', '低清晰度'],
+    examples: ['小红书穿搭封面', '品牌 lookbook', '街拍时尚大片'],
+    outputProfileIds: ['universal-zh', 'dalle-natural-zh', 'flux-descriptive-en', 'domestic-zh-concise'],
+  },
+  {
+    id: 'rule-tech-product-render',
+    type: 'rule',
+    name: '科技产品渲染规则',
+    description: '用于耳机、手机、机器人、智能硬件和 3C 产品的工业设计表达、材质高光和科技感控制。',
+    appliesTo: ['product', 'poster'],
+    tags: ['科技产品', '硬件', '耳机', '手机', '机器人', '3C', '设备', 'render', '爆炸图', 'tech'],
+    aliases: ['产品渲染', '科技渲染', '硬件海报', 'tech render', 'product render'],
+    dimensions: ['结构比例可信', '金属玻璃塑料材质清楚', '边缘高光精致', '主辅视角服务卖点', '科技感统一'],
+    positiveFragments: ['工业设计比例准确', '边缘高光精致', '金属玻璃材质真实', '科技产品展示台感', '体积光和轮廓光清楚', '高端商业渲染完成度'],
+    negativeFragments: ['结构变形', '材质廉价', '反光杂乱', '零件关系错误', '科技感不统一', '低清晰度'],
+    examples: ['耳机产品海报', '手机爆炸图', '机器人产品展示'],
+    outputProfileIds: ['universal-zh', 'flux-descriptive-en', 'midjourney-style', 'stable-diffusion-style'],
+  },
+  {
+    id: 'rule-game-ui-screenshot',
+    type: 'rule',
+    name: '游戏界面截图规则',
+    description: '用于 HUD、背包、商店、战斗通行证和活动页等游戏 UI 的层级、可读性和世界观一致性。',
+    appliesTo: ['ui-screenshot'],
+    tags: ['游戏界面', 'HUD', '背包', '商店', '任务面板', 'battle pass', 'game ui', 'ui screenshot'],
+    aliases: ['游戏 UI', '游戏截图', 'HUD 界面', '游戏商店', 'game screenshot'],
+    dimensions: ['信息层级清晰', '按钮和数值区可读', '图标系统一致', '界面风格服务世界观', '主交互焦点明确'],
+    positiveFragments: ['HUD 层级明确', '按钮和数值区清晰', '图标系统统一', '世界观一致的界面语言', '高保真游戏截图感', '活动入口和奖励层级清楚'],
+    negativeFragments: ['UI 挤压错位', '图标风格混乱', '文字难读', '功能层级不清', '真实品牌商标', '低清晰度'],
+    examples: ['科幻游戏主界面', '手游商城活动页', '战斗通行证截图'],
+    outputProfileIds: ['universal-zh', 'stable-diffusion-style', 'domestic-zh-concise'],
+  },
+  {
     id: 'quality-text-control',
     type: 'quality',
     name: '画面文字控制规则',
@@ -268,6 +380,17 @@ export const PROMPT_INTENT_MAPPINGS: PromptIntentMapping[] = [
   { id: 'intent-infographic', phrases: ['信息图', '流程图', '时间线', '对比', '科普', '知识卡片'], categories: ['infographic'], ruleIds: ['rule-infographic-clarity', 'quality-text-control'], styleHints: ['扁平', '图标'], outputProfileId: 'universal-zh' },
   { id: 'intent-scene-space', phrases: ['室内', '空间', '建筑', '场景', '环境', '效果图', '美食'], categories: ['scene'], ruleIds: ['rule-scene-environment-design', 'quality-negative-foundation'], styleHints: ['写实', '摄影'], outputProfileId: 'universal-zh' },
   { id: 'intent-brand-system', phrases: ['品牌', 'Logo', '图标', '包装', '标签', '吉祥物', '情绪板'], categories: ['other', 'product'], ruleIds: ['rule-brand-identity-system', 'quality-text-control'], styleHints: ['商业设计', '扁平'], outputProfileId: 'universal-zh' },
+  { id: 'intent-ecommerce-detail-page', phrases: ['详情页', '商品详情', '淘宝详情', '天猫详情', '京东详情', '卖点图', 'product page', 'detail page'], categories: ['product', 'poster'], ruleIds: ['rule-commercial-product-photo', 'quality-text-control'], styleHints: ['商业摄影', '电商'], outputProfileId: 'universal-zh' },
+  { id: 'intent-food-photography', phrases: ['美食摄影', '食物摄影', '饮品摄影', '茶饮海报', '茶饮摄影', '菜品拍摄', '餐饮出片', '菜单图', 'food photography', 'drink photo'], categories: ['product', 'scene', 'poster'], ruleIds: ['rule-food-drink-photography', 'quality-negative-foundation'], styleHints: ['写实', '摄影', '食欲感'], outputProfileId: 'universal-zh' },
+  { id: 'intent-architecture-interior', phrases: ['室内设计', '建筑空间', '空间效果图', '家居空间', '展厅设计', '办公室效果图', 'interior design', 'architecture visualization'], categories: ['scene'], ruleIds: ['rule-architecture-interior-visualization', 'quality-negative-foundation'], styleHints: ['写实', '建筑可视化'], outputProfileId: 'universal-zh' },
+  { id: 'intent-fashion-styling', phrases: ['穿搭', '时尚穿搭', 'lookbook', '模特街拍', '时尚大片', '服装拍摄', 'fashion styling', 'editorial look'], categories: ['portrait', 'poster'], ruleIds: ['rule-fashion-styling-direction', 'quality-negative-foundation'], styleHints: ['时尚', '编辑感'], outputProfileId: 'universal-zh' },
+  { id: 'intent-xiaohongshu-fashion-cover', phrases: ['小红书穿搭', '穿搭封面', 'ootd封面', '种草穿搭', 'lookbook封面'], categories: ['poster', 'portrait'], ruleIds: ['rule-social-cover-clickability', 'rule-fashion-styling-direction', 'quality-text-control'], styleHints: ['时尚', '生活方式'], outputProfileId: 'universal-zh' },
+  { id: 'intent-tech-product-render', phrases: ['科技产品', '硬件海报', '产品渲染', '耳机渲染', '手机渲染', '产品爆炸图', 'tech render', 'product render'], categories: ['product', 'poster'], ruleIds: ['rule-tech-product-render', 'quality-negative-foundation'], styleHints: ['科技感', '3d', '商业摄影'], outputProfileId: 'universal-zh' },
+  { id: 'intent-game-ui', phrases: ['游戏界面', '游戏UI', 'HUD', '游戏截图', '商店界面', '背包界面', 'battle pass', 'game ui'], categories: ['ui-screenshot'], ruleIds: ['rule-game-ui-screenshot', 'quality-text-control'], styleHints: ['游戏', '科技感'], outputProfileId: 'universal-zh' },
+  { id: 'intent-dashboard-screenshot', phrases: ['数据看板', 'dashboard', '管理台', '后台界面', 'BI看板', 'analytics dashboard'], categories: ['ui-screenshot'], ruleIds: ['rule-ui-screenshot-realism', 'quality-text-control'], styleHints: ['数据可视化', '现代'], outputProfileId: 'universal-zh' },
+  { id: 'intent-dalle-output', phrases: ['DALL-E', 'dalle', 'OpenAI image', 'gpt image'], categories: ['poster', 'portrait', 'anime', 'product', 'ui-screenshot', 'infographic', 'scene', 'other'], ruleIds: ['quality-negative-foundation'], styleHints: ['自然语言'], outputProfileId: 'dalle-natural-zh' },
+  { id: 'intent-flux-output', phrases: ['Flux', 'flux', 'Black Forest Labs'], categories: ['poster', 'portrait', 'anime', 'product', 'ui-screenshot', 'infographic', 'scene', 'other'], ruleIds: ['quality-negative-foundation'], styleHints: ['写实', '材质'], outputProfileId: 'flux-descriptive-en' },
+  { id: 'intent-domestic-model-output', phrases: ['即梦', '可灵', '通义万相', '豆包', '国产模型', '中文模型'], categories: ['poster', 'portrait', 'anime', 'product', 'ui-screenshot', 'infographic', 'scene', 'other'], ruleIds: ['quality-negative-foundation'], styleHints: ['中文短句'], outputProfileId: 'domestic-zh-concise' },
   { id: 'intent-english-output', phrases: ['英文', 'english', 'English prompt', 'MJ', 'Midjourney', 'SD', 'Stable Diffusion'], categories: ['poster', 'portrait', 'anime', 'product', 'ui-screenshot', 'infographic', 'scene', 'other'], ruleIds: ['quality-negative-foundation'], styleHints: [], outputProfileId: 'universal-en' },
 ]
 
@@ -316,11 +439,16 @@ function ruleFields(rule: PromptKnowledgeRule): string[] {
 
 function selectOutputProfile(query: string, intents: RankedResult<PromptIntentMapping>[], requestedId?: string): PromptOutputProfile {
   const queryLower = query.toLowerCase()
-  const inferredId = requestedId
+  const preferredIntentProfile = intents.find((entry) => entry.item.outputProfileId && !['universal-zh', 'universal-en'].includes(entry.item.outputProfileId))?.item.outputProfileId
     ?? intents.find((entry) => entry.item.outputProfileId)?.item.outputProfileId
+  const inferredId = requestedId
+    ?? (queryLower.includes('dall-e') || queryLower.includes('dalle') || queryLower.includes('openai image') || queryLower.includes('gpt image') ? 'dalle-natural-zh' : undefined)
+    ?? (queryLower.includes('flux') ? 'flux-descriptive-en' : undefined)
+    ?? (queryLower.includes('即梦') || queryLower.includes('可灵') || queryLower.includes('通义万相') || queryLower.includes('豆包') || queryLower.includes('国产模型') || queryLower.includes('中文模型') ? 'domestic-zh-concise' : undefined)
     ?? (queryLower.includes('midjourney') || queryLower.includes('mj') ? 'midjourney-style' : undefined)
     ?? (queryLower.includes('stable diffusion') || queryLower.includes('sd') ? 'stable-diffusion-style' : undefined)
     ?? (queryLower.includes('english') || queryLower.includes('英文') ? 'universal-en' : undefined)
+    ?? preferredIntentProfile
     ?? 'universal-zh'
   return PROMPT_OUTPUT_PROFILES.find((profile) => profile.id === inferredId) ?? PROMPT_OUTPUT_PROFILES[0]
 }
@@ -348,10 +476,14 @@ export function searchPromptKnowledge(query: string, options: PromptKnowledgeSea
     ...(options.templates ?? []).map((template) => template.category),
   ])
   const intentRuleHints = new Set(intents.flatMap((entry) => entry.item.ruleIds))
+  const intentOutputProfileHints = new Set(intents.map((entry) => entry.item.outputProfileId).filter(Boolean))
   const templateText = (options.templates ?? []).flatMap((template) => [template.id, template.name, template.description, ...template.tags, ...template.examples])
   const styleText = (options.styles ?? []).flatMap((style) => [style.id, style.name, style.englishKeyword, style.description, ...style.tags, ...style.aliases, ...Object.values(style.visualTraits).filter(Boolean)])
+  const scenarioText = (options.templates ?? []).flatMap((template) => [template.scenario ?? '', template.scenarioLabel ?? '', ...(template.scenarioAliases ?? [])])
   const visualIntentText = visualIntent ? [
     visualIntent.subject,
+    visualIntent.scenario,
+    visualIntent.scenarioLabel,
     visualIntent.purpose,
     visualIntent.platform,
     visualIntent.mood,
@@ -363,18 +495,20 @@ export function searchPromptKnowledge(query: string, options: PromptKnowledgeSea
     ...visualIntent.constraints,
     ...visualIntent.negativeHints,
   ].filter(Boolean).join(' ') : ''
-  const enrichedQuery = [query, visualIntentText, ...templateText, ...styleText, ...categoryHints].join(' ')
+  const enrichedQuery = [query, visualIntentText, ...templateText, ...styleText, ...scenarioText, ...categoryHints].join(' ')
   const enrichedKeywords = unique([...keywords, ...extractSearchKeywords(enrichedQuery)])
   const limit = options.limit ?? 5
+  const outputProfile = selectOutputProfile(query, intents, options.outputProfileId)
   const rules = PROMPT_KNOWLEDGE_RULES.map((rule) => {
     const result = scoreFields(ruleFields(rule), enrichedKeywords, 2)
     const categoryBonus = categoryHints.some((category) => rule.appliesTo.includes(category)) ? 5 : 0
     const intentBonus = intentRuleHints.has(rule.id) ? 8 : 0
-    const visualIntentBonus = visualIntent && ruleFields(rule).join(' ').toLowerCase().includes([visualIntent.purpose, visualIntent.platform, visualIntent.text.density].filter(Boolean).join(' ').toLowerCase()) ? 3 : 0
+    const visualIntentBonus = visualIntent && ruleFields(rule).join(' ').toLowerCase().includes([visualIntent.purpose, visualIntent.platform, visualIntent.text.density, visualIntent.scenarioLabel].filter(Boolean).join(' ').toLowerCase()) ? 3 : 0
     const generalBonus = rule.type === 'quality' && categoryHints.length ? 1 : 0
+    const profileBonus = rule.outputProfileIds?.includes(outputProfile.id) || rule.outputProfileIds?.some((id) => intentOutputProfileHints.has(id)) ? 4 : 0
     return {
       item: rule,
-      score: result.score + categoryBonus + intentBonus + visualIntentBonus + generalBonus,
+      score: result.score + categoryBonus + intentBonus + visualIntentBonus + generalBonus + profileBonus,
       matchedKeywords: unique([...result.matched, ...categoryHints.filter((category) => rule.appliesTo.includes(category))]),
     }
   })
@@ -385,6 +519,6 @@ export function searchPromptKnowledge(query: string, options: PromptKnowledgeSea
   return {
     rules,
     intents,
-    outputProfile: selectOutputProfile(query, intents, options.outputProfileId),
+    outputProfile,
   }
 }
