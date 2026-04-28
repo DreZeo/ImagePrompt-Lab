@@ -66,6 +66,10 @@ function buildAssistantArtifacts(
     ? composition.templateDraft
     : null
   const invalidIds = validation ? [...validation.invalidTemplateIds, ...validation.invalidStyleIds] : []
+  const knowledgeMatch = content.match(/Used knowledge IDs:\s*(.+)/i)
+  const knowledgeIds = knowledgeMatch
+    ? knowledgeMatch[1].split(/[,，;；\s]+/).map((id) => id.trim()).filter((id) => id && id.length > 1)
+    : []
   return {
     finalPrompt: extractFinalPrompt(content),
     presetContext,
@@ -73,6 +77,7 @@ function buildAssistantArtifacts(
     validation,
     templateDraft,
     draftStatus: invalidIds.length ? `已忽略无效预设 ID：${invalidIds.join(', ')}` : null,
+    knowledgeIds,
   }
 }
 
@@ -344,6 +349,16 @@ export default function PromptAgentModal({ prompt, onApplyPrompt, onClose, seedM
             {retrievalKeywords.length ? retrievalKeywords.map((keyword) => <span key={keyword} className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-600 dark:text-blue-300">{keyword}</span>) : <span className="text-slate-400 dark:text-slate-500">暂无显式关键词命中</span>}
           </div>
         </div>
+        {message.artifacts?.knowledgeIds?.length ? (
+          <div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">LLM 引用知识规则</div>
+            <div className="flex flex-wrap gap-1">
+              {message.artifacts.knowledgeIds.map((id) => (
+                <span key={id} className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600 dark:text-amber-300">{id}</span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {topRecommendation && (
           <div className="rounded-xl bg-white/80 px-2 py-1.5 text-slate-600 dark:bg-black/20 dark:text-slate-300">
             最佳结构候选：<span className="font-medium">{topRecommendation.template.name}</span> · {(topRecommendation.confidence * 100).toFixed(0)}%

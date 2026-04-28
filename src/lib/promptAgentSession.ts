@@ -16,6 +16,7 @@ export interface PromptAgentMessageArtifacts {
   validation?: AssistantCompositionValidation | null
   templateDraft?: TemplateDraft | null
   draftStatus?: string | null
+  knowledgeIds?: string[]
 }
 
 export interface PromptAgentMessage {

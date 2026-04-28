@@ -25,6 +25,7 @@ interface PromptPresetModalProps {
   prompt: string
   onApplyPrompt: (prompt: string) => void
   onClose: () => void
+  onSendToAgent?: (message: string) => void
 }
 
 function appendToPrompt(currentPrompt: string, addition: string): string {
@@ -71,7 +72,7 @@ function matchesTemplate(
   ].join(' ').toLowerCase().includes(keyword)
 }
 
-export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: PromptPresetModalProps) {
+export default function PromptPresetModal({ prompt, onApplyPrompt, onClose, onSendToAgent }: PromptPresetModalProps) {
   const [activeTab, setActiveTab] = useState<PresetTab>('styles')
   const [templateSource, setTemplateSource] = useState<TemplateSourceTab>('main')
   const [styleQuery, setStyleQuery] = useState('')
@@ -151,6 +152,17 @@ export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: Pr
       <div className="flex items-center justify-between gap-2 mt-auto">
         <div className="text-[11px] text-gray-400 dark:text-gray-500 min-w-0 truncate">{template.tags.slice(0, 4).join(' · ')}</div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {onSendToAgent && (
+            <button
+              onClick={() => {
+                onSendToAgent(`请基于模板「${template.name}」帮我优化提示词。\n\n模板分类：${TEMPLATE_CATEGORY_LABELS[template.category]}\n模板描述：${template.description}\n槽位：${Object.values(template.slots).map((slot) => slot.label).join('、') || '无'}\n模板内容：${truncateText(template.promptPattern, 200)}`)
+                onClose()
+              }}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors dark:text-purple-300 dark:bg-purple-500/10 dark:hover:bg-purple-500/20"
+            >
+              AI 优化
+            </button>
+          )}
           {custom && (
             <>
               <button onClick={() => setEditingTemplate(template as TemplateDraft)} className="px-2.5 py-1.5 rounded-lg text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] transition-colors">编辑</button>

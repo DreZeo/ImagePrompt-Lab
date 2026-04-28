@@ -66,6 +66,8 @@ export default function InputBar() {
   const [nInput, setNInput] = useState(String(params.n))
   const dragCounter = useRef(0)
   const isMobile = useIsMobile()
+  const [agentSeedMessage, setAgentSeedMessage] = useState<string | undefined>(undefined)
+  const handleSeedConsumed = useCallback(() => setAgentSeedMessage(undefined), [])
 
   const canSubmit = (prompt.trim() || inputImages.length) && settings.apiKey
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
@@ -478,11 +480,17 @@ export default function InputBar() {
           prompt={prompt}
           onApplyPrompt={setPrompt}
           onClose={() => setShowPromptPresets(false)}
+          onSendToAgent={(msg) => {
+            setAgentSeedMessage(msg)
+            setShowPromptPresets(false)
+          }}
         />
       )}
       <PromptAgentModal
         prompt={prompt}
         onApplyPrompt={setPrompt}
+        seedMessage={agentSeedMessage}
+        onSeedConsumed={handleSeedConsumed}
       />
 
       <div className="fixed bottom-[calc(1rem+var(--safe-bottom))] sm:bottom-[calc(1.5rem+var(--safe-bottom))] left-1/2 -translate-x-1/2 z-30 w-full max-w-4xl px-3 sm:px-4 transition-all duration-300">
