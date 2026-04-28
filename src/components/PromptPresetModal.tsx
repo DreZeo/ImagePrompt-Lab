@@ -5,6 +5,7 @@ import {
   TEMPLATE_CATEGORY_LABELS,
   composeStylePrompt,
   deleteUserTemplate,
+  getLegacyReferenceTemplates,
   getUserTemplates,
   renderTemplatePrompt,
   searchStructuredStyles,
@@ -18,6 +19,7 @@ import {
 } from '../data/structuredPrompts'
 
 type PresetTab = 'styles' | 'templates' | 'custom'
+type TemplateSourceTab = 'main' | 'legacy'
 
 interface PromptPresetModalProps {
   prompt: string
@@ -49,8 +51,29 @@ function matchesCustomTemplate(template: TemplateDraft, query: string): boolean 
   ].join(' ').toLowerCase().includes(keyword)
 }
 
+function matchesTemplate(
+  template: StructuredPromptTemplate,
+  query: string,
+  category: PromptTemplateCategory | 'all',
+): boolean {
+  if (category !== 'all' && template.category !== category) return false
+  const keyword = query.trim().toLowerCase()
+  if (!keyword) return true
+  return [
+    template.name,
+    template.description,
+    template.promptPattern,
+    template.negativePrompt,
+    template.sourceTitle ?? '',
+    template.sourcePrompt ?? '',
+    ...template.tags,
+    ...template.examples,
+  ].join(' ').toLowerCase().includes(keyword)
+}
+
 export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: PromptPresetModalProps) {
   const [activeTab, setActiveTab] = useState<PresetTab>('styles')
+  const [templateSource, setTemplateSource] = useState<TemplateSourceTab>('main')
   const [styleQuery, setStyleQuery] = useState('')
   const [templateQuery, setTemplateQuery] = useState('')
   const [customQuery, setCustomQuery] = useState('')
@@ -62,10 +85,15 @@ export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: Pr
   useCloseOnEscape(true, onClose)
 
   const styles = useMemo(() => searchStructuredStyles(styleQuery).map((entry) => entry.item), [styleQuery])
-  const templates = useMemo(
+  const mainTemplates = useMemo(
     () => searchStructuredTemplates(templateQuery, templateCategory).map((entry) => entry.item).filter((template) => template.source !== 'user'),
     [templateQuery, templateCategory],
   )
+  const legacyTemplates = useMemo(
+    () => getLegacyReferenceTemplates().filter((template) => matchesTemplate(template, templateQuery, templateCategory)),
+    [templateCategory, templateQuery],
+  )
+  const templates = templateSource === 'main' ? mainTemplates : legacyTemplates
   const filteredCustomTemplates = useMemo(
     () => customTemplates.filter((template) => matchesCustomTemplate(template, customQuery)),
     [customTemplates, customQuery],
@@ -113,7 +141,7 @@ export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: Pr
       <div className="min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-[11px] text-gray-500 dark:text-gray-400 flex-shrink-0">{TEMPLATE_CATEGORY_LABELS[template.category]}</span>
-          {template.source && <span className="text-[11px] text-gray-400 dark:text-gray-500">{custom ? '自定义' : template.source}</span>}
+          {template.source && <span className="text-[11px] text-gray-400 dark:text-gray-500">{custom ? '自定义' : template.source === 'legacy' ? '旧固定模板' : template.source}</span>}
           {template.isPlaceholderOnly && <span className="text-[11px] text-amber-500">需补全</span>}
         </div>
         <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 line-clamp-2">{template.name}</h3>
@@ -171,7 +199,27 @@ export default function PromptPresetModal({ prompt, onApplyPrompt, onClose }: Pr
           </div>
         ) : activeTab === 'templates' ? (
           <div className="flex flex-col min-h-0 flex-1">
-            <div className="px-4 sm:px-5 py-3 grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-2"><input value={templateQuery} onChange={(e) => setTemplateQuery(e.target.value)} placeholder="搜索中文模板、标签、槽位或使用场景" className="w-full px-3 py-2 rounded-xl border border-gray-200/70 dark:border-white/[0.08] bg-white/70 dark:bg-white/[0.03] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" /><select value={templateCategory} onChange={(e) => setTemplateCategory(e.target.value as PromptTemplateCategory | 'all')} className="w-full px-3 py-2 rounded-xl border border-gray-200/70 dark:border-white/[0.08] bg-white/70 dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"><option value="all">全部分类</option>{Object.entries(TEMPLATE_CATEGORY_LABELS).map(([category, label]) => <option key={category} value={category}>{label}</option>)}</select></div>
+            <div className="px-4 sm:px-5 py-3 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-2"><input value={templateQuery} onChange={(e) => setTemplateQuery(e.target.value)} placeholder="搜索中文模板、标签、槽位或使用场景" className="w-full px-3 py-2 rounded-xl border border-gray-200/70 dark:border-white/[0.08] bg-white/70 dark:bg-white/[0.03] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" /><select value={templateCategory} onChange={(e) => setTemplateCategory(e.target.value as PromptTemplateCategory | 'all')} className="w-full px-3 py-2 rounded-xl border border-gray-200/70 dark:border-white/[0.08] bg-white/70 dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"><option value="all">全部分类</option>{Object.entries(TEMPLATE_CATEGORY_LABELS).map(([category, label]) => <option key={category} value={category}>{label}</option>)}</select></div>
+              <div className="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100/80 dark:bg-white/[0.04] p-1">
+                {([
+                  ['main', '结构/场景模板'],
+                  ['legacy', '旧固定模板'],
+                ] as Array<[TemplateSourceTab, string]>).map(([source, label]) => (
+                  <button
+                    key={source}
+                    onClick={() => setTemplateSource(source)}
+                    className={`py-2 rounded-xl text-sm font-medium transition-colors ${
+                      templateSource === source
+                        ? 'bg-white dark:bg-white/[0.08] text-gray-800 dark:text-gray-100 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="px-4 sm:px-5 pb-5 overflow-y-auto min-h-0"><div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{templates.map((template) => renderTemplateCard(template))}</div></div>
           </div>
         ) : (
