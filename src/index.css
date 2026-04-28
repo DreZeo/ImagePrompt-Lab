@@ -8,6 +8,7 @@
 :root {
   --font-ui-sans: 'HarmonyOS Sans SC', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'Maple Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 * {

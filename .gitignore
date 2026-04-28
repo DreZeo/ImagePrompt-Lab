@@ -3,3 +3,7 @@ dist/
 dev-proxy.config.json
 dev-proxy.config.example.json
 openspec/
+.claude/
+.codex/
+vite.err
+vite.log
