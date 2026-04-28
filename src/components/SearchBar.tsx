@@ -9,7 +9,7 @@ export default function SearchBar() {
 
   return (
     <div className="mt-6 mb-4 flex gap-3">
-      <div className="relative w-32 flex-shrink-0 z-20">
+      <div className="relative w-28 sm:w-32 flex-shrink-0 z-20">
         <Select
           value={filterStatus}
           onChange={(val) => setFilterStatus(val as any)}

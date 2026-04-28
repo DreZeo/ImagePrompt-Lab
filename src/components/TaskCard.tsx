@@ -92,9 +92,9 @@ export default function TaskCard({
       }`}
       onClick={onClick}
     >
-      <div className="flex h-40">
+      <div className="flex flex-col sm:flex-row sm:h-40">
         {/* 左侧图片区域 */}
-        <div className="w-40 min-w-[10rem] h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0">
+        <div className="w-full h-48 sm:w-40 sm:min-w-[10rem] sm:h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden sm:flex-shrink-0">
           {task.status === 'running' && (
             <div className="flex flex-col items-center gap-2">
               <svg
