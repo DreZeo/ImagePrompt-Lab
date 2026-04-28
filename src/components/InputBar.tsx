@@ -1,4 +1,4 @@
-﻿import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+﻿import { useRef, useEffect, useCallback, useState } from 'react'
 import { useStore, submitTask, addImageFromFile } from '../store'
 import { DEFAULT_PARAMS } from '../types'
 import { normalizeImageSize } from '../lib/size'
@@ -6,7 +6,6 @@ import Select from './Select'
 import SizePickerModal from './SizePickerModal'
 import PromptPresetModal from './PromptPresetModal'
 import PromptAgentModal from './PromptAgentModal'
-import { getPromptRecommendations, renderRecommendationPrompt, type PromptRecommendation } from '../data/structuredPrompts'
 
 /** 通用悬浮气泡提示 */
 function ButtonTooltip({ visible, text }: { visible: boolean; text: string }) {
@@ -59,7 +58,6 @@ export default function InputBar() {
   const [mobileCollapsed, setMobileCollapsed] = useState(false)
   const [showSizePicker, setShowSizePicker] = useState(false)
   const [showPromptPresets, setShowPromptPresets] = useState(false)
-  const [agentSeed, setAgentSeed] = useState('')
   const handleRef = useRef<HTMLDivElement>(null)
   const dragTouchRef = useRef({ startY: 0, moved: false })
   const [outputCompressionInput, setOutputCompressionInput] = useState(
@@ -71,16 +69,6 @@ export default function InputBar() {
 
   const canSubmit = (prompt.trim() || inputImages.length) && settings.apiKey
   const atImageLimit = inputImages.length >= API_MAX_IMAGES
-  const promptRecommendations = useMemo(() => getPromptRecommendations(prompt, 3), [prompt])
-
-  const applyRecommendation = useCallback((recommendation: PromptRecommendation) => {
-    setPrompt(renderRecommendationPrompt(recommendation))
-  }, [setPrompt])
-
-  const inspectRecommendation = useCallback((recommendation: PromptRecommendation) => {
-    setAgentSeed(`请基于这条结构策略继续优化：${recommendation.template.name}；视觉语言 ${recommendation.styles.map((style) => style.name).join('、') || '无'}。不要直接套用固定模板，请提取关键词和策略链。当前输入：${prompt}`)
-  }, [prompt])
-
   useEffect(() => {
     setOutputCompressionInput(
       params.output_compression == null ? '' : String(params.output_compression),
@@ -495,8 +483,6 @@ export default function InputBar() {
       <PromptAgentModal
         prompt={prompt}
         onApplyPrompt={setPrompt}
-        seedMessage={agentSeed}
-        onSeedConsumed={() => setAgentSeed('')}
       />
 
       <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-30 w-full max-w-4xl px-3 sm:px-4 transition-all duration-300">
@@ -538,35 +524,6 @@ export default function InputBar() {
             placeholder="描述你想生成的图片..."
             className="w-full px-4 py-3 rounded-2xl border border-gray-200/60 dark:border-white/[0.08] bg-white/50 dark:bg-white/[0.03] text-sm focus:outline-none leading-relaxed resize-none shadow-sm transition-[border-color,box-shadow] duration-200"
           />
-
-          {promptRecommendations.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">推荐策略</span>
-              {promptRecommendations.map((recommendation) => (
-                <div
-                  key={recommendation.template.id}
-                  className="flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50/80 px-2 py-1 text-xs text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200"
-                >
-                  <button
-                    type="button"
-                    onClick={() => applyRecommendation(recommendation)}
-                    title={recommendation.reason}
-                    className="max-w-[180px] truncate font-medium"
-                  >
-                    {recommendation.template.name.replace(/模板|Template/gi, '策略')} {(recommendation.confidence * 100).toFixed(0)}%
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => inspectRecommendation(recommendation)}
-                    className="rounded-full px-1 text-[10px] text-blue-500 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-500/20"
-                    title="让 AI 解释并优化"
-                  >
-                    AI
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* 参数 + 按钮 */}
           <div className="mt-3">

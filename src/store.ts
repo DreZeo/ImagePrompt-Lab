@@ -23,6 +23,15 @@ import {
 } from './lib/db'
 import { callImageApi } from './lib/api'
 import { normalizeImageSize } from './lib/size'
+import {
+  createFallbackPromptAgentTitle,
+  createPromptAgentSession,
+  type PromptAgentMessage,
+  type PromptAgentMessageArtifacts,
+  type PromptAgentRewriteState,
+  type PromptAgentSession,
+  type PromptAgentTitleStatus,
+} from './lib/promptAgentSession'
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate'
 
 // ===== Image cache =====
@@ -67,6 +76,22 @@ interface AppState {
   // 任务列表
   tasks: TaskRecord[]
   setTasks: (t: TaskRecord[]) => void
+
+  // Prompt Agent sessions
+  promptAgentSessions: PromptAgentSession[]
+  activePromptAgentSessionId: string | null
+  promptAgentRewrite: PromptAgentRewriteState | null
+  ensurePromptAgentSession: () => PromptAgentSession
+  createPromptAgentSession: () => PromptAgentSession
+  selectPromptAgentSession: (id: string) => void
+  deletePromptAgentSession: (id: string) => void
+  renamePromptAgentSession: (id: string, title: string) => void
+  setPromptAgentSessionTitle: (id: string, title: string, status: PromptAgentTitleStatus) => void
+  appendPromptAgentMessage: (sessionId: string, message: PromptAgentMessage) => void
+  updatePromptAgentMessage: (sessionId: string, messageId: string, patch: Partial<PromptAgentMessage>) => void
+  updatePromptAgentMessageArtifacts: (sessionId: string, messageId: string, artifacts: PromptAgentMessageArtifacts) => void
+  startPromptAgentRewrite: (sessionId: string, messageId: string) => string | null
+  cancelPromptAgentRewrite: () => void
 
   // 搜索和筛选
   searchQuery: string
@@ -141,6 +166,134 @@ export const useStore = create<AppState>()(
       tasks: [],
       setTasks: (tasks) => set({ tasks }),
 
+      // Prompt Agent sessions
+      promptAgentSessions: [],
+      activePromptAgentSessionId: null,
+      promptAgentRewrite: null,
+      ensurePromptAgentSession: () => {
+        const state = get()
+        const active = state.promptAgentSessions.find((session) => session.id === state.activePromptAgentSessionId)
+        if (active) return active
+        const fallback = state.promptAgentSessions[0]
+        if (fallback) {
+          set({ activePromptAgentSessionId: fallback.id })
+          return fallback
+        }
+        const session = createPromptAgentSession()
+        set({ promptAgentSessions: [session], activePromptAgentSessionId: session.id })
+        return session
+      },
+      createPromptAgentSession: () => {
+        const session = createPromptAgentSession()
+        set((s) => ({
+          promptAgentSessions: [session, ...s.promptAgentSessions],
+          activePromptAgentSessionId: session.id,
+          promptAgentRewrite: null,
+        }))
+        return session
+      },
+      selectPromptAgentSession: (id) => {
+        set((s) => s.promptAgentSessions.some((session) => session.id === id)
+          ? { activePromptAgentSessionId: id, promptAgentRewrite: null }
+          : s)
+      },
+      deletePromptAgentSession: (id) => {
+        set((s) => {
+          const remaining = s.promptAgentSessions.filter((session) => session.id !== id)
+          if (!remaining.length) {
+            const session = createPromptAgentSession()
+            return {
+              promptAgentSessions: [session],
+              activePromptAgentSessionId: session.id,
+              promptAgentRewrite: null,
+            }
+          }
+          const nextActiveId = s.activePromptAgentSessionId === id
+            ? [...remaining].sort((a, b) => b.updatedAt - a.updatedAt)[0].id
+            : s.activePromptAgentSessionId
+          return {
+            promptAgentSessions: remaining,
+            activePromptAgentSessionId: nextActiveId,
+            promptAgentRewrite: s.promptAgentRewrite?.sessionId === id ? null : s.promptAgentRewrite,
+          }
+        })
+      },
+      renamePromptAgentSession: (id, title) => {
+        const nextTitle = title.trim()
+        if (!nextTitle) return
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => session.id === id
+            ? { ...session, title: nextTitle, titleStatus: 'manual', updatedAt: Date.now() }
+            : session),
+        }))
+      },
+      setPromptAgentSessionTitle: (id, title, status) => {
+        const nextTitle = title.trim()
+        if (!nextTitle) return
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => {
+            if (session.id !== id || session.titleStatus === 'manual') return session
+            return { ...session, title: nextTitle, titleStatus: status, updatedAt: Date.now() }
+          }),
+        }))
+      },
+      appendPromptAgentMessage: (sessionId, message) => {
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => {
+            if (session.id !== sessionId) return session
+            const nextTitle = session.messages.length === 0 && message.role === 'user'
+              ? createFallbackPromptAgentTitle(message.content)
+              : session.title
+            return {
+              ...session,
+              title: session.titleStatus === 'default' ? nextTitle : session.title,
+              titleStatus: session.titleStatus === 'default' && message.role === 'user' ? 'pending' : session.titleStatus,
+              messages: [...session.messages, message],
+              updatedAt: Date.now(),
+            }
+          }),
+        }))
+      },
+      updatePromptAgentMessage: (sessionId, messageId, patch) => {
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => session.id === sessionId
+            ? {
+              ...session,
+              messages: session.messages.map((message) => message.id === messageId ? { ...message, ...patch } : message),
+              updatedAt: Date.now(),
+            }
+            : session),
+        }))
+      },
+      updatePromptAgentMessageArtifacts: (sessionId, messageId, artifacts) => {
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => session.id === sessionId
+            ? {
+              ...session,
+              messages: session.messages.map((message) => message.id === messageId
+                ? { ...message, artifacts: { ...message.artifacts, ...artifacts } }
+                : message),
+              updatedAt: Date.now(),
+            }
+            : session),
+        }))
+      },
+      startPromptAgentRewrite: (sessionId, messageId) => {
+        let content: string | null = null
+        set((s) => ({
+          promptAgentSessions: s.promptAgentSessions.map((session) => {
+            if (session.id !== sessionId) return session
+            const index = session.messages.findIndex((message) => message.id === messageId && message.role === 'user')
+            if (index < 0) return session
+            content = session.messages[index].content
+            return { ...session, messages: session.messages.slice(0, index), updatedAt: Date.now() }
+          }),
+          promptAgentRewrite: content ? { sessionId, sourceMessageId: messageId } : s.promptAgentRewrite,
+        }))
+        return content
+      },
+      cancelPromptAgentRewrite: () => set({ promptAgentRewrite: null }),
+
       // Search & Filter
       searchQuery: '',
       setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -175,6 +328,8 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         settings: state.settings,
         params: state.params,
+        promptAgentSessions: state.promptAgentSessions,
+        activePromptAgentSessionId: state.activePromptAgentSessionId,
       }),
     },
   ),

@@ -18,6 +18,7 @@ import {
   type VisualIntent,
 } from '../data/structuredPrompts'
 import { searchPromptKnowledge, type PromptKnowledgeContext } from '../data/promptKnowledge'
+import { sanitizePromptAgentTitle } from './promptAgentSession'
 
 export interface EffectiveChatSettings {
   baseUrl: string
@@ -312,6 +313,25 @@ export async function testChatConnection(settings: EffectiveChatSettings): Promi
   return postChatCompletion(settings, [
     { role: 'user', content: 'Reply with OK.' },
   ], 0)
+}
+
+export async function generatePromptAgentSessionTitle(
+  settings: EffectiveChatSettings,
+  messages: ChatMessage[],
+): Promise<string> {
+  const source = messages
+    .filter((message) => message.role !== 'system')
+    .slice(0, 4)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join('\n')
+  const title = await postChatCompletion({ ...settings, stream: false }, [
+    {
+      role: 'system',
+      content: '你是会话标题生成器。请只输出一个简短标题，4到12个中文字符或2到5个英文词，不要引号、标点或解释。标题要体现图像提示词对话的主题。',
+    },
+    { role: 'user', content: source },
+  ], 0.2, { stream: false })
+  return sanitizePromptAgentTitle(title)
 }
 
 export function buildPresetContext(query: string, presetOnly = false): PresetContext {
